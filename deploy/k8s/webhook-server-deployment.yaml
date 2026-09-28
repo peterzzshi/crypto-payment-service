@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook-server
+  labels:
+    app: webhook-server
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webhook-server
+  template:
+    metadata:
+      labels:
+        app: webhook-server
+        component: api
+    spec:
+      containers:
+      - name: webhook-server
+        image: gcr.io/project-id/webhook-server:latest
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: crypto-payment-secrets
+              key: database-url
+        - name: BITGO_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: crypto-payment-secrets
+              key: bitgo-api-key
+        - name: BITGO_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: crypto-payment-secrets
+              key: bitgo-webhook-secret
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: crypto-payment-config
+              key: log-level
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5

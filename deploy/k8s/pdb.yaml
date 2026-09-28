@@ -1,0 +1,20 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: webhook-server-pdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: webhook-server
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: withdrawal-worker-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: withdrawal-worker

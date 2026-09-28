@@ -1,0 +1,18 @@
+with-expecter: true
+packages:
+  crypto-payment-service/internal/repository:
+    config:
+      dir: "internal/mocks/repository"
+    interfaces:
+      DepositRepository:
+      WithdrawalRepository:
+      BalanceRepository:
+      AddressRepository:
+      DepositEventRepository:
+      WithdrawalEventRepository:
+      TxManager:
+  crypto-payment-service/internal/broadcast:
+    config:
+      dir: "internal/mocks/broadcast"
+    interfaces:
+      Broadcaster:

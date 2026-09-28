@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crypto-payment-config
+data:
+  log-level: "info"
+  poll-interval: "5s"
+  batch-size: "100"

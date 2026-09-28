@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: withdrawal-worker
+  labels:
+    app: withdrawal-worker
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: withdrawal-worker
+  template:
+    metadata:
+      labels:
+        app: withdrawal-worker
+        component: worker
+    spec:
+      containers:
+      - name: withdrawal-worker
+        image: gcr.io/project-id/withdrawal-worker:latest
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: crypto-payment-secrets
+              key: database-url
+        - name: BITGO_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: crypto-payment-secrets
+              key: bitgo-api-key
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: crypto-payment-config
+              key: log-level
+        - name: POLL_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: crypto-payment-config
+              key: poll-interval
+        - name: BATCH_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: crypto-payment-config
+              key: batch-size
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
