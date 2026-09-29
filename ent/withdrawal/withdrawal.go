@@ -44,6 +44,10 @@ const (
 	FieldFailureReason = "failure_reason"
 	// FieldTransactionMetadata holds the string denoting the transaction_metadata field in the database.
 	FieldTransactionMetadata = "transaction_metadata"
+	// FieldLockedBy holds the string denoting the locked_by field in the database.
+	FieldLockedBy = "locked_by"
+	// FieldLockedUntil holds the string denoting the locked_until field in the database.
+	FieldLockedUntil = "locked_until"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -90,6 +94,8 @@ var Columns = []string{
 	FieldNextRetryAt,
 	FieldFailureReason,
 	FieldTransactionMetadata,
+	FieldLockedBy,
+	FieldLockedUntil,
 	FieldVersion,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -206,6 +212,16 @@ func ByNextRetryAt(opts ...sql.OrderTermOption) OrderOption {
 // ByFailureReason orders the results by the failure_reason field.
 func ByFailureReason(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFailureReason, opts...).ToFunc()
+}
+
+// ByLockedBy orders the results by the locked_by field.
+func ByLockedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLockedBy, opts...).ToFunc()
+}
+
+// ByLockedUntil orders the results by the locked_until field.
+func ByLockedUntil(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLockedUntil, opts...).ToFunc()
 }
 
 // ByVersion orders the results by the version field.

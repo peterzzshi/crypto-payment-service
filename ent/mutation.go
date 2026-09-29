@@ -1573,6 +1573,8 @@ type DepositMutation struct {
 	required_confirmations    *int
 	addrequired_confirmations *int
 	transaction_metadata      *map[string]interface{}
+	locked_by                 *string
+	locked_until              *time.Time
 	version                   *int32
 	addversion                *int32
 	created_at                *time.Time
@@ -2205,6 +2207,104 @@ func (m *DepositMutation) ResetTransactionMetadata() {
 	delete(m.clearedFields, deposit.FieldTransactionMetadata)
 }
 
+// SetLockedBy sets the "locked_by" field.
+func (m *DepositMutation) SetLockedBy(s string) {
+	m.locked_by = &s
+}
+
+// LockedBy returns the value of the "locked_by" field in the mutation.
+func (m *DepositMutation) LockedBy() (r string, exists bool) {
+	v := m.locked_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedBy returns the old "locked_by" field's value of the Deposit entity.
+// If the Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DepositMutation) OldLockedBy(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedBy: %w", err)
+	}
+	return oldValue.LockedBy, nil
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (m *DepositMutation) ClearLockedBy() {
+	m.locked_by = nil
+	m.clearedFields[deposit.FieldLockedBy] = struct{}{}
+}
+
+// LockedByCleared returns if the "locked_by" field was cleared in this mutation.
+func (m *DepositMutation) LockedByCleared() bool {
+	_, ok := m.clearedFields[deposit.FieldLockedBy]
+	return ok
+}
+
+// ResetLockedBy resets all changes to the "locked_by" field.
+func (m *DepositMutation) ResetLockedBy() {
+	m.locked_by = nil
+	delete(m.clearedFields, deposit.FieldLockedBy)
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (m *DepositMutation) SetLockedUntil(t time.Time) {
+	m.locked_until = &t
+}
+
+// LockedUntil returns the value of the "locked_until" field in the mutation.
+func (m *DepositMutation) LockedUntil() (r time.Time, exists bool) {
+	v := m.locked_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedUntil returns the old "locked_until" field's value of the Deposit entity.
+// If the Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DepositMutation) OldLockedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedUntil: %w", err)
+	}
+	return oldValue.LockedUntil, nil
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (m *DepositMutation) ClearLockedUntil() {
+	m.locked_until = nil
+	m.clearedFields[deposit.FieldLockedUntil] = struct{}{}
+}
+
+// LockedUntilCleared returns if the "locked_until" field was cleared in this mutation.
+func (m *DepositMutation) LockedUntilCleared() bool {
+	_, ok := m.clearedFields[deposit.FieldLockedUntil]
+	return ok
+}
+
+// ResetLockedUntil resets all changes to the "locked_until" field.
+func (m *DepositMutation) ResetLockedUntil() {
+	m.locked_until = nil
+	delete(m.clearedFields, deposit.FieldLockedUntil)
+}
+
 // SetVersion sets the "version" field.
 func (m *DepositMutation) SetVersion(i int32) {
 	m.version = &i
@@ -2475,7 +2575,7 @@ func (m *DepositMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DepositMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 17)
 	if m.customer != nil {
 		fields = append(fields, deposit.FieldCustomerID)
 	}
@@ -2511,6 +2611,12 @@ func (m *DepositMutation) Fields() []string {
 	}
 	if m.transaction_metadata != nil {
 		fields = append(fields, deposit.FieldTransactionMetadata)
+	}
+	if m.locked_by != nil {
+		fields = append(fields, deposit.FieldLockedBy)
+	}
+	if m.locked_until != nil {
+		fields = append(fields, deposit.FieldLockedUntil)
 	}
 	if m.version != nil {
 		fields = append(fields, deposit.FieldVersion)
@@ -2553,6 +2659,10 @@ func (m *DepositMutation) Field(name string) (ent.Value, bool) {
 		return m.RequiredConfirmations()
 	case deposit.FieldTransactionMetadata:
 		return m.TransactionMetadata()
+	case deposit.FieldLockedBy:
+		return m.LockedBy()
+	case deposit.FieldLockedUntil:
+		return m.LockedUntil()
 	case deposit.FieldVersion:
 		return m.Version()
 	case deposit.FieldCreatedAt:
@@ -2592,6 +2702,10 @@ func (m *DepositMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldRequiredConfirmations(ctx)
 	case deposit.FieldTransactionMetadata:
 		return m.OldTransactionMetadata(ctx)
+	case deposit.FieldLockedBy:
+		return m.OldLockedBy(ctx)
+	case deposit.FieldLockedUntil:
+		return m.OldLockedUntil(ctx)
 	case deposit.FieldVersion:
 		return m.OldVersion(ctx)
 	case deposit.FieldCreatedAt:
@@ -2690,6 +2804,20 @@ func (m *DepositMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTransactionMetadata(v)
+		return nil
+	case deposit.FieldLockedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedBy(v)
+		return nil
+	case deposit.FieldLockedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedUntil(v)
 		return nil
 	case deposit.FieldVersion:
 		v, ok := value.(int32)
@@ -2790,6 +2918,12 @@ func (m *DepositMutation) ClearedFields() []string {
 	if m.FieldCleared(deposit.FieldTransactionMetadata) {
 		fields = append(fields, deposit.FieldTransactionMetadata)
 	}
+	if m.FieldCleared(deposit.FieldLockedBy) {
+		fields = append(fields, deposit.FieldLockedBy)
+	}
+	if m.FieldCleared(deposit.FieldLockedUntil) {
+		fields = append(fields, deposit.FieldLockedUntil)
+	}
 	return fields
 }
 
@@ -2812,6 +2946,12 @@ func (m *DepositMutation) ClearField(name string) error {
 		return nil
 	case deposit.FieldTransactionMetadata:
 		m.ClearTransactionMetadata()
+		return nil
+	case deposit.FieldLockedBy:
+		m.ClearLockedBy()
+		return nil
+	case deposit.FieldLockedUntil:
+		m.ClearLockedUntil()
 		return nil
 	}
 	return fmt.Errorf("unknown Deposit nullable field %s", name)
@@ -2856,6 +2996,12 @@ func (m *DepositMutation) ResetField(name string) error {
 		return nil
 	case deposit.FieldTransactionMetadata:
 		m.ResetTransactionMetadata()
+		return nil
+	case deposit.FieldLockedBy:
+		m.ResetLockedBy()
+		return nil
+	case deposit.FieldLockedUntil:
+		m.ResetLockedUntil()
 		return nil
 	case deposit.FieldVersion:
 		m.ResetVersion()
@@ -4476,6 +4622,8 @@ type WithdrawalMutation struct {
 	next_retry_at             *time.Time
 	failure_reason            *string
 	transaction_metadata      *map[string]interface{}
+	locked_by                 *string
+	locked_until              *time.Time
 	version                   *int32
 	addversion                *int32
 	created_at                *time.Time
@@ -5260,6 +5408,104 @@ func (m *WithdrawalMutation) ResetTransactionMetadata() {
 	delete(m.clearedFields, withdrawal.FieldTransactionMetadata)
 }
 
+// SetLockedBy sets the "locked_by" field.
+func (m *WithdrawalMutation) SetLockedBy(s string) {
+	m.locked_by = &s
+}
+
+// LockedBy returns the value of the "locked_by" field in the mutation.
+func (m *WithdrawalMutation) LockedBy() (r string, exists bool) {
+	v := m.locked_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedBy returns the old "locked_by" field's value of the Withdrawal entity.
+// If the Withdrawal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WithdrawalMutation) OldLockedBy(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedBy: %w", err)
+	}
+	return oldValue.LockedBy, nil
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (m *WithdrawalMutation) ClearLockedBy() {
+	m.locked_by = nil
+	m.clearedFields[withdrawal.FieldLockedBy] = struct{}{}
+}
+
+// LockedByCleared returns if the "locked_by" field was cleared in this mutation.
+func (m *WithdrawalMutation) LockedByCleared() bool {
+	_, ok := m.clearedFields[withdrawal.FieldLockedBy]
+	return ok
+}
+
+// ResetLockedBy resets all changes to the "locked_by" field.
+func (m *WithdrawalMutation) ResetLockedBy() {
+	m.locked_by = nil
+	delete(m.clearedFields, withdrawal.FieldLockedBy)
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (m *WithdrawalMutation) SetLockedUntil(t time.Time) {
+	m.locked_until = &t
+}
+
+// LockedUntil returns the value of the "locked_until" field in the mutation.
+func (m *WithdrawalMutation) LockedUntil() (r time.Time, exists bool) {
+	v := m.locked_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedUntil returns the old "locked_until" field's value of the Withdrawal entity.
+// If the Withdrawal object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WithdrawalMutation) OldLockedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedUntil: %w", err)
+	}
+	return oldValue.LockedUntil, nil
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (m *WithdrawalMutation) ClearLockedUntil() {
+	m.locked_until = nil
+	m.clearedFields[withdrawal.FieldLockedUntil] = struct{}{}
+}
+
+// LockedUntilCleared returns if the "locked_until" field was cleared in this mutation.
+func (m *WithdrawalMutation) LockedUntilCleared() bool {
+	_, ok := m.clearedFields[withdrawal.FieldLockedUntil]
+	return ok
+}
+
+// ResetLockedUntil resets all changes to the "locked_until" field.
+func (m *WithdrawalMutation) ResetLockedUntil() {
+	m.locked_until = nil
+	delete(m.clearedFields, withdrawal.FieldLockedUntil)
+}
+
 // SetVersion sets the "version" field.
 func (m *WithdrawalMutation) SetVersion(i int32) {
 	m.version = &i
@@ -5503,7 +5749,7 @@ func (m *WithdrawalMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WithdrawalMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 20)
 	if m.customer != nil {
 		fields = append(fields, withdrawal.FieldCustomerID)
 	}
@@ -5548,6 +5794,12 @@ func (m *WithdrawalMutation) Fields() []string {
 	}
 	if m.transaction_metadata != nil {
 		fields = append(fields, withdrawal.FieldTransactionMetadata)
+	}
+	if m.locked_by != nil {
+		fields = append(fields, withdrawal.FieldLockedBy)
+	}
+	if m.locked_until != nil {
+		fields = append(fields, withdrawal.FieldLockedUntil)
 	}
 	if m.version != nil {
 		fields = append(fields, withdrawal.FieldVersion)
@@ -5596,6 +5848,10 @@ func (m *WithdrawalMutation) Field(name string) (ent.Value, bool) {
 		return m.FailureReason()
 	case withdrawal.FieldTransactionMetadata:
 		return m.TransactionMetadata()
+	case withdrawal.FieldLockedBy:
+		return m.LockedBy()
+	case withdrawal.FieldLockedUntil:
+		return m.LockedUntil()
 	case withdrawal.FieldVersion:
 		return m.Version()
 	case withdrawal.FieldCreatedAt:
@@ -5641,6 +5897,10 @@ func (m *WithdrawalMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldFailureReason(ctx)
 	case withdrawal.FieldTransactionMetadata:
 		return m.OldTransactionMetadata(ctx)
+	case withdrawal.FieldLockedBy:
+		return m.OldLockedBy(ctx)
+	case withdrawal.FieldLockedUntil:
+		return m.OldLockedUntil(ctx)
 	case withdrawal.FieldVersion:
 		return m.OldVersion(ctx)
 	case withdrawal.FieldCreatedAt:
@@ -5761,6 +6021,20 @@ func (m *WithdrawalMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetTransactionMetadata(v)
 		return nil
+	case withdrawal.FieldLockedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedBy(v)
+		return nil
+	case withdrawal.FieldLockedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedUntil(v)
+		return nil
 	case withdrawal.FieldVersion:
 		v, ok := value.(int32)
 		if !ok {
@@ -5878,6 +6152,12 @@ func (m *WithdrawalMutation) ClearedFields() []string {
 	if m.FieldCleared(withdrawal.FieldTransactionMetadata) {
 		fields = append(fields, withdrawal.FieldTransactionMetadata)
 	}
+	if m.FieldCleared(withdrawal.FieldLockedBy) {
+		fields = append(fields, withdrawal.FieldLockedBy)
+	}
+	if m.FieldCleared(withdrawal.FieldLockedUntil) {
+		fields = append(fields, withdrawal.FieldLockedUntil)
+	}
 	return fields
 }
 
@@ -5906,6 +6186,12 @@ func (m *WithdrawalMutation) ClearField(name string) error {
 		return nil
 	case withdrawal.FieldTransactionMetadata:
 		m.ClearTransactionMetadata()
+		return nil
+	case withdrawal.FieldLockedBy:
+		m.ClearLockedBy()
+		return nil
+	case withdrawal.FieldLockedUntil:
+		m.ClearLockedUntil()
 		return nil
 	}
 	return fmt.Errorf("unknown Withdrawal nullable field %s", name)
@@ -5959,6 +6245,12 @@ func (m *WithdrawalMutation) ResetField(name string) error {
 		return nil
 	case withdrawal.FieldTransactionMetadata:
 		m.ResetTransactionMetadata()
+		return nil
+	case withdrawal.FieldLockedBy:
+		m.ResetLockedBy()
+		return nil
+	case withdrawal.FieldLockedUntil:
+		m.ResetLockedUntil()
 		return nil
 	case withdrawal.FieldVersion:
 		m.ResetVersion()

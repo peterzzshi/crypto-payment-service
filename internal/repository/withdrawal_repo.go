@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"math/big"
+	"time"
 
 	"crypto-payment-service/ent"
 	"crypto-payment-service/ent/withdrawal"
@@ -24,7 +25,7 @@ func (repo *WithdrawalRepo) Create(ctx context.Context, w *domain.Withdrawal) er
 		return domain.ValidationError{Field: "amount_atomic", Message: "required"}
 	}
 
-	row, err := repo.client.Withdrawal.Create().
+	builder := repo.client.Withdrawal.Create().
 		SetID(w.ID).
 		SetCustomerID(w.CustomerID).
 		SetIdempotencyKey(w.IdempotencyKey).
@@ -32,7 +33,6 @@ func (repo *WithdrawalRepo) Create(ctx context.Context, w *domain.Withdrawal) er
 		SetNillableTxHash(w.TxHash).
 		SetCurrency(string(w.Currency)).
 		SetNetwork(string(w.Network)).
-		SetAsset(string(w.Asset)).
 		SetAmountAtomic(w.AmountAtomic.String()).
 		SetStatus(string(w.Status)).
 		SetConfirmations(w.Confirmations).
@@ -41,8 +41,13 @@ func (repo *WithdrawalRepo) Create(ctx context.Context, w *domain.Withdrawal) er
 		SetNillableNextRetryAt(w.NextRetryAt).
 		SetNillableFailureReason(w.FailureReason).
 		SetTransactionMetadata(w.TransactionMetadata).
-		SetVersion(w.Version).
-		Save(ctx)
+		SetVersion(w.Version)
+
+	if w.Asset != "" {
+		builder = builder.SetAsset(string(w.Asset))
+	}
+
+	row, err := builder.Save(ctx)
 
 	if err != nil {
 		return translateWithdrawalError(err)
@@ -88,6 +93,8 @@ func (repo *WithdrawalRepo) Save(ctx context.Context, w *domain.Withdrawal) erro
 		SetNillableNextRetryAt(w.NextRetryAt).
 		SetNillableFailureReason(w.FailureReason).
 		SetTransactionMetadata(w.TransactionMetadata).
+		ClearLockedBy().
+		ClearLockedUntil().
 		Save(ctx)
 
 	if ent.IsNotFound(err) {
@@ -102,50 +109,27 @@ func (repo *WithdrawalRepo) Save(ctx context.Context, w *domain.Withdrawal) erro
 	return nil
 }
 
-func (repo *WithdrawalRepo) ClaimByStatus(ctx context.Context, status domain.WithdrawalStatus, limit int) ([]*domain.Withdrawal, error) {
-	if status == domain.WithdrawalStatusApproved {
-		return repo.claimAndMark(ctx, limit)
-	}
-	return repo.claim(ctx, status, limit)
-}
-
-func (repo *WithdrawalRepo) claim(ctx context.Context, status domain.WithdrawalStatus, limit int) ([]*domain.Withdrawal, error) {
+// LeaseClaimByStatus atomically takes a processing lease on up to limit rows
+// in the given status. A row is claimable when it has no lease or its lease
+// has expired; the SELECT ... FOR UPDATE SKIP LOCKED plus the per-row version
+// bump make the claim exclusive across replicas (ADR-0002).
+func (repo *WithdrawalRepo) LeaseClaimByStatus(ctx context.Context, status domain.WithdrawalStatus, limit int, workerID string, leaseTTL time.Duration) ([]*domain.Withdrawal, error) {
 	tx, err := repo.client.Tx(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	now := time.Now()
+	lockedUntil := now.Add(leaseTTL)
 	rows, err := tx.Withdrawal.Query().
-		Where(withdrawal.Status(string(status))).
-		Limit(limit).
-		ForUpdate(sql.WithLockAction(sql.SkipLocked)).
-		All(ctx)
-
-	if err != nil {
-		return nil, translateWithdrawalError(err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	withdrawals := make([]*domain.Withdrawal, len(rows))
-	for i, row := range rows {
-		withdrawals[i] = mapWithdrawal(row)
-	}
-	return withdrawals, nil
-}
-
-func (repo *WithdrawalRepo) claimAndMark(ctx context.Context, limit int) ([]*domain.Withdrawal, error) {
-	tx, err := repo.client.Tx(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	rows, err := tx.Withdrawal.Query().
-		Where(withdrawal.Status(string(domain.WithdrawalStatusApproved))).
+		Where(
+			withdrawal.Status(string(status)),
+			withdrawal.Or(
+				withdrawal.LockedUntilIsNil(),
+				withdrawal.LockedUntilLT(now),
+			),
+		).
 		Limit(limit).
 		ForUpdate(sql.WithLockAction(sql.SkipLocked)).
 		All(ctx)
@@ -158,7 +142,75 @@ func (repo *WithdrawalRepo) claimAndMark(ctx context.Context, limit int) ([]*dom
 		_, err := tx.Withdrawal.UpdateOneID(row.ID).
 			Where(withdrawal.Version(row.Version)).
 			SetVersion(row.Version + 1).
+			SetLockedBy(workerID).
+			SetLockedUntil(lockedUntil).
+			Save(ctx)
+		if err != nil {
+			return nil, translateWithdrawalError(err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	withdrawals := make([]*domain.Withdrawal, len(rows))
+	for i, row := range rows {
+		w := mapWithdrawal(row)
+		w.LockedBy = &workerID
+		w.LockedUntil = &lockedUntil
+		w.Version = row.Version + 1
+		withdrawals[i] = w
+	}
+	return withdrawals, nil
+}
+
+// ClaimForBroadcast implements the WithdrawalRepository contract: only rows
+// whose retry backoff has elapsed (or was never scheduled) are claimed.
+func (repo *WithdrawalRepo) ClaimForBroadcast(ctx context.Context, limit int) ([]*domain.Withdrawal, error) {
+	tx, err := repo.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now()
+	rows, err := tx.Withdrawal.Query().
+		Where(
+			withdrawal.Status(string(domain.WithdrawalStatusApproved)),
+			withdrawal.Or(
+				withdrawal.NextRetryAtIsNil(),
+				withdrawal.NextRetryAtLTE(now),
+			),
+		).
+		Limit(limit).
+		ForUpdate(sql.WithLockAction(sql.SkipLocked)).
+		All(ctx)
+
+	if err != nil {
+		return nil, translateWithdrawalError(err)
+	}
+
+	fromStatus := domain.WithdrawalStatusApproved
+	toStatus := domain.WithdrawalStatusBroadcasting
+	for _, row := range rows {
+		_, err := tx.Withdrawal.UpdateOneID(row.ID).
+			Where(withdrawal.Version(row.Version)).
+			SetVersion(row.Version + 1).
 			SetStatus(string(domain.WithdrawalStatusBroadcasting)).
+			Save(ctx)
+		if err != nil {
+			return nil, translateWithdrawalError(err)
+		}
+
+		// The claim is a state transition; its audit event must commit in the
+		// same transaction (ADR-0003).
+		_, err = tx.WithdrawalEvent.Create().
+			SetWithdrawalID(row.ID).
+			SetEventType(domain.EventWithdrawalBroadcastClaimed).
+			SetFromStatus(string(fromStatus)).
+			SetToStatus(string(toStatus)).
+			SetCreatedAt(now).
 			Save(ctx)
 		if err != nil {
 			return nil, translateWithdrawalError(err)
@@ -191,6 +243,8 @@ func mapWithdrawal(row *ent.Withdrawal) *domain.Withdrawal {
 		IdempotencyKey:        row.IdempotencyKey,
 		DestinationAddress:    row.DestinationAddress,
 		TxHash:                row.TxHash,
+		Currency:              domain.Currency(row.Currency),
+		Network:               domain.Network(row.Network),
 		Asset:                 domain.Asset(row.Asset),
 		AmountAtomic:          amount,
 		Status:                domain.WithdrawalStatus(row.Status),
@@ -200,6 +254,8 @@ func mapWithdrawal(row *ent.Withdrawal) *domain.Withdrawal {
 		NextRetryAt:           row.NextRetryAt,
 		FailureReason:         row.FailureReason,
 		TransactionMetadata:   row.TransactionMetadata,
+		LockedBy:              row.LockedBy,
+		LockedUntil:           row.LockedUntil,
 		Version:               row.Version,
 		CreatedAt:             row.CreatedAt,
 		UpdatedAt:             row.UpdatedAt,

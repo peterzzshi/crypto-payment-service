@@ -78,6 +78,8 @@ var (
 		{Name: "confirmations", Type: field.TypeInt, Default: 0},
 		{Name: "required_confirmations", Type: field.TypeInt},
 		{Name: "transaction_metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "locked_by", Type: field.TypeString, Nullable: true},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
 		{Name: "version", Type: field.TypeInt32, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -92,13 +94,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "deposits_addresses_deposits",
-				Columns:    []*schema.Column{DepositsColumns[14]},
+				Columns:    []*schema.Column{DepositsColumns[16]},
 				RefColumns: []*schema.Column{AddressesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "deposits_customers_deposits",
-				Columns:    []*schema.Column{DepositsColumns[15]},
+				Columns:    []*schema.Column{DepositsColumns[17]},
 				RefColumns: []*schema.Column{CustomersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -112,7 +114,7 @@ var (
 			{
 				Name:    "deposit_address_id",
 				Unique:  false,
-				Columns: []*schema.Column{DepositsColumns[14]},
+				Columns: []*schema.Column{DepositsColumns[16]},
 			},
 			{
 				Name:    "deposit_status",
@@ -127,7 +129,12 @@ var (
 			{
 				Name:    "deposit_customer_id",
 				Unique:  false,
-				Columns: []*schema.Column{DepositsColumns[15]},
+				Columns: []*schema.Column{DepositsColumns[17]},
+			},
+			{
+				Name:    "deposit_status_locked_until",
+				Unique:  false,
+				Columns: []*schema.Column{DepositsColumns[7], DepositsColumns[12]},
 			},
 		},
 	}
@@ -213,6 +220,8 @@ var (
 		{Name: "next_retry_at", Type: field.TypeTime, Nullable: true},
 		{Name: "failure_reason", Type: field.TypeString, Nullable: true},
 		{Name: "transaction_metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "locked_by", Type: field.TypeString, Nullable: true},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
 		{Name: "version", Type: field.TypeInt32, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -226,7 +235,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "withdrawals_customers_withdrawals",
-				Columns:    []*schema.Column{WithdrawalsColumns[18]},
+				Columns:    []*schema.Column{WithdrawalsColumns[20]},
 				RefColumns: []*schema.Column{CustomersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -250,7 +259,12 @@ var (
 			{
 				Name:    "withdrawal_customer_id",
 				Unique:  false,
-				Columns: []*schema.Column{WithdrawalsColumns[18]},
+				Columns: []*schema.Column{WithdrawalsColumns[20]},
+			},
+			{
+				Name:    "withdrawal_status_locked_until",
+				Unique:  false,
+				Columns: []*schema.Column{WithdrawalsColumns[8], WithdrawalsColumns[16]},
 			},
 		},
 	}

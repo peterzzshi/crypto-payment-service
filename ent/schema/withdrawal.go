@@ -54,6 +54,14 @@ func (Withdrawal) Fields() []ent.Field {
 			Nillable(),
 		field.JSON("transaction_metadata", map[string]any{}).
 			Optional(),
+		field.String("locked_by").
+			Optional().
+			Nillable().
+			Comment("Worker identity holding the processing lease (ADR-0002)"),
+		field.Time("locked_until").
+			Optional().
+			Nillable().
+			Comment("Lease expiry; expired leases are reclaimable"),
 		field.Int32("version").
 			Default(1),
 		field.Time("created_at").
@@ -84,5 +92,6 @@ func (Withdrawal) Indexes() []ent.Index {
 		index.Fields("status"),
 		index.Fields("tx_hash"),
 		index.Fields("customer_id"),
+		index.Fields("status", "locked_until"),
 	}
 }

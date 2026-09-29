@@ -25,5 +25,13 @@ Whoever or whatever initiated a transaction request against this service — a p
 _Avoid_: User (conflates "caller of this API" with "customer/player" — not every caller is a retail customer)
 
 **Approver**:
-An authenticated internal operator or risk service authorized to approve or reject a pending Withdrawal. The Approver is distinct from the Customer who owns the Withdrawal, and both identities belong in its audit history.
+An authenticated internal operator or risk service authorized to approve or reject a pending Withdrawal. The Approver is distinct from the Customer who owns the Withdrawal — separation of duties means an Approver can never approve or reject their own Withdrawal — and both identities belong in its audit history.
 _Avoid_: Customer approver, reviewer
+
+**Audit Event**:
+The durable record of a state transition on a Deposit or Withdrawal, written atomically with the transition it describes — a transition without its Audit Event is a bug, not a tolerated loss. Event types follow the canonical `<aggregate>.<verb>` form (e.g. `withdrawal.approved`, `deposit.confirmation_updated`), and the acting identity rides in metadata as `actor_id`.
+_Avoid_: Log entry, history row
+
+**Lease**:
+A short-lived, self-expiring claim (`locked_by`, `locked_until`) a worker takes on a row before doing idempotent work such as confirmation polling. Expiry, not explicit release, is the recovery mechanism: a crashed worker's rows become claimable again on their own. Irreversible work (broadcast) never uses a Lease — it uses a state-machine claim instead.
+_Avoid_: Lock (overloaded with database row locks and in-process mutexes)

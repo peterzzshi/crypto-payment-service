@@ -91,15 +91,15 @@ func init() {
 	// deposit.DefaultConfirmations holds the default value on creation for the confirmations field.
 	deposit.DefaultConfirmations = depositDescConfirmations.Default.(int)
 	// depositDescVersion is the schema descriptor for version field.
-	depositDescVersion := depositFields[13].Descriptor()
+	depositDescVersion := depositFields[15].Descriptor()
 	// deposit.DefaultVersion holds the default value on creation for the version field.
 	deposit.DefaultVersion = depositDescVersion.Default.(int32)
 	// depositDescCreatedAt is the schema descriptor for created_at field.
-	depositDescCreatedAt := depositFields[14].Descriptor()
+	depositDescCreatedAt := depositFields[16].Descriptor()
 	// deposit.DefaultCreatedAt holds the default value on creation for the created_at field.
 	deposit.DefaultCreatedAt = depositDescCreatedAt.Default.(func() time.Time)
 	// depositDescUpdatedAt is the schema descriptor for updated_at field.
-	depositDescUpdatedAt := depositFields[15].Descriptor()
+	depositDescUpdatedAt := depositFields[17].Descriptor()
 	// deposit.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	deposit.DefaultUpdatedAt = depositDescUpdatedAt.Default.(func() time.Time)
 	// deposit.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -193,15 +193,15 @@ func init() {
 	// withdrawal.DefaultRetryCount holds the default value on creation for the retry_count field.
 	withdrawal.DefaultRetryCount = withdrawalDescRetryCount.Default.(int)
 	// withdrawalDescVersion is the schema descriptor for version field.
-	withdrawalDescVersion := withdrawalFields[16].Descriptor()
+	withdrawalDescVersion := withdrawalFields[18].Descriptor()
 	// withdrawal.DefaultVersion holds the default value on creation for the version field.
 	withdrawal.DefaultVersion = withdrawalDescVersion.Default.(int32)
 	// withdrawalDescCreatedAt is the schema descriptor for created_at field.
-	withdrawalDescCreatedAt := withdrawalFields[17].Descriptor()
+	withdrawalDescCreatedAt := withdrawalFields[19].Descriptor()
 	// withdrawal.DefaultCreatedAt holds the default value on creation for the created_at field.
 	withdrawal.DefaultCreatedAt = withdrawalDescCreatedAt.Default.(func() time.Time)
 	// withdrawalDescUpdatedAt is the schema descriptor for updated_at field.
-	withdrawalDescUpdatedAt := withdrawalFields[18].Descriptor()
+	withdrawalDescUpdatedAt := withdrawalFields[20].Descriptor()
 	// withdrawal.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	withdrawal.DefaultUpdatedAt = withdrawalDescUpdatedAt.Default.(func() time.Time)
 	// withdrawal.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

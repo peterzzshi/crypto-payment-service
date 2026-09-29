@@ -5,14 +5,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"crypto-payment-service/internal/domain"
+	"crypto-payment-service/internal/httpx"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -27,10 +26,16 @@ type DepositHandler struct {
 	Secret   string
 }
 
-func (webhookHandler *DepositHandler) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
+type depositResponse struct {
+	DepositID string `json:"deposit_id"`
+	Status    string `json:"status"`
+	LatencyMs int64  `json:"latency_ms"`
+}
+
+func (h *DepositHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	segment := strings.TrimPrefix(request.URL.Path, "/webhooks/")
-	requestID := request.Header.Get("X-Request-ID")
+	segment := strings.TrimPrefix(r.URL.Path, "/webhooks/")
+	requestID := r.Header.Get("X-Request-ID")
 	if requestID == "" {
 		requestID = uuid.NewString()
 	}
@@ -38,63 +43,51 @@ func (webhookHandler *DepositHandler) ServeHTTP(responseWriter http.ResponseWrit
 	log := zap.L().With(
 		zap.String("request_id", requestID),
 		zap.String("segment", segment),
-		zap.String("path", request.URL.Path),
-		zap.String("method", request.Method),
-		zap.String("remote", request.RemoteAddr),
+		zap.String("path", r.URL.Path),
+		zap.String("method", r.Method),
+		zap.String("remote", r.RemoteAddr),
 	)
-	ctx := request.Context()
 
-	ingestor, ok := webhookHandler.Adapters[segment]
+	ingestor, ok := h.Adapters[segment]
 	if !ok {
 		log.Warn("webhook endpoint not found")
-		http.Error(responseWriter, "not found", http.StatusNotFound)
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 
-	body, err := io.ReadAll(request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("failed to read request body", zap.Error(err))
-		http.Error(responseWriter, "cannot read body", http.StatusBadRequest)
+		http.Error(w, "cannot read body", http.StatusBadRequest)
 		return
 	}
-	defer func() {
-		if closeErr := request.Body.Close(); closeErr != nil {
-			log.Warn("failed to close request body", zap.Error(closeErr))
-		}
-	}()
 
-	if webhookHandler.Secret != "" {
-		signature := request.Header.Get("X-Signature")
-		if !verifyHMAC(body, webhookHandler.Secret, signature) {
+	if h.Secret != "" {
+		if !verifyHMAC(body, h.Secret, r.Header.Get("X-Signature")) {
 			log.Warn("invalid webhook signature")
-			http.Error(responseWriter, "invalid signature", http.StatusUnauthorized)
+			http.Error(w, "invalid signature", http.StatusUnauthorized)
 			return
 		}
 	}
 
-	deposit, err := ingestor.Process(ctx, body)
+	deposit, err := ingestor.Process(r.Context(), body)
 	if err != nil {
-		status := statusFromError(err)
 		log.Error("webhook processing failed", zap.Error(err))
-		http.Error(responseWriter, err.Error(), status)
+		httpx.WriteError(w, err)
 		return
 	}
 
-	log = log.With(
+	log.With(
 		zap.String("deposit_id", deposit.ID),
 		zap.String("customer_id", deposit.CustomerID),
-		zap.String("asset", string(deposit.Asset)),
 		zap.String("status", string(deposit.Status)),
-	)
+	).Info("webhook processed successfully")
 
-	latency := time.Since(start).Milliseconds()
-	log.Info("webhook processed successfully")
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	responseWriter.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprintf(responseWriter, `{"deposit_id":"%s","status":"%s","latency_ms":%d}`, deposit.ID, deposit.Status, latency); err != nil {
-		log.Warn("failed to write response", zap.Error(err))
-	}
+	httpx.WriteJSON(w, log, http.StatusOK, depositResponse{
+		DepositID: deposit.ID,
+		Status:    string(deposit.Status),
+		LatencyMs: time.Since(start).Milliseconds(),
+	})
 }
 
 func verifyHMAC(body []byte, secret, providedSignature string) bool {
@@ -103,23 +96,10 @@ func verifyHMAC(body []byte, secret, providedSignature string) bool {
 	}
 	hasher := hmac.New(sha256.New, []byte(secret))
 	hasher.Write(body)
-	expectedSignature := hex.EncodeToString(hasher.Sum(nil))
-	return hmac.Equal([]byte(strings.ToLower(expectedSignature)), []byte(strings.ToLower(providedSignature)))
-}
-
-func statusFromError(err error) int {
-	switch {
-	case errors.As(err, new(domain.NotFoundError)):
-		return http.StatusNotFound
-	case errors.As(err, new(domain.InvalidAddressError)),
-		errors.As(err, new(domain.InvalidAmountError)),
-		errors.As(err, new(domain.UnsupportedAssetError)),
-		errors.As(err, new(domain.ValidationError)),
-		errors.As(err, new(domain.WebhookBadPayloadError)):
-		return http.StatusBadRequest
-	case errors.As(err, new(domain.InsufficientFundsError)):
-		return http.StatusPaymentRequired
-	default:
-		return http.StatusInternalServerError
+	expected := hasher.Sum(nil)
+	provided, err := hex.DecodeString(strings.ToLower(providedSignature))
+	if err != nil {
+		return false
 	}
+	return hmac.Equal(expected, provided)
 }

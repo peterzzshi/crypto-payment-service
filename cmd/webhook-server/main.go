@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"crypto-payment-service/internal/adapter"
 	"crypto-payment-service/internal/adapter/bitgo"
 	"crypto-payment-service/internal/api"
+	"crypto-payment-service/internal/broadcast"
 	"crypto-payment-service/internal/domain"
 	"crypto-payment-service/internal/migrate"
 	"crypto-payment-service/internal/repository"
@@ -153,14 +153,12 @@ func setupApplication(cfg config) (*application, error) {
 	withdrawalService := service.NewWithdrawalService(withdrawalRepo, withdrawalEventRepo).
 		WithTxManager(txManager)
 
-	// BitGo adapter with full asset registry (BTC, ETH, BNB, USDT/Ethereum, USDT/Tron, USDT/BSC)
 	registry := domain.DefaultRegistry()
 	if err := domain.ValidateContractAddresses(registry); err != nil {
 		return nil, err
 	}
 	bitgoAdapter := bitgo.NewBitGoAdapter(registry)
-	bitgoWrapper := adapter.NewCustodyAdapterWrapper(bitgoAdapter, domain.AssetBTC) // Asset unused for multi-asset custody
-	bitgoIngestor := service.NewDepositIngestor(bitgoWrapper, depositService, addressRepo)
+	bitgoIngestor := service.NewDepositIngestor(bitgoAdapter, depositService, addressRepo)
 
 	webhookHandler := &webhook.DepositHandler{
 		Adapters: map[string]webhook.DepositIngestor{
@@ -213,14 +211,16 @@ func (app *application) run(ctx context.Context) error {
 		}
 	}()
 
-	var workerDone chan struct{}
+	var w *worker.Worker
+	workerDone := make(chan struct{})
 	if app.config.WorkerInterval > 0 {
-		workerDone = make(chan struct{})
-		w := worker.NewWorker(
+		w = worker.NewWorker(
 			app.depositRepo,
 			app.withdrawalRepo,
 			app.depositService,
 			app.withdrawalService,
+			broadcast.MustNewBroadcasterFromEnv(),
+			worker.DefaultWorkerID(),
 			app.config.WorkerInterval,
 		)
 		go w.Run(workerDone)
@@ -228,19 +228,23 @@ func (app *application) run(ctx context.Context) error {
 		log.Info("worker disabled (WITHDRAWAL_WORKER_INTERVAL not set)")
 	}
 
+	stopWorker := func() {
+		if w == nil {
+			return
+		}
+		close(workerDone)
+		<-w.Stopped()
+		log.Info("worker stopped")
+	}
+
 	select {
 	case err := <-serverErrors:
-		if workerDone != nil {
-			close(workerDone)
-		}
+		stopWorker()
 		return err
 	case <-shutdown:
 		log.Info("shutdown signal received, initiating graceful shutdown")
 
-		if workerDone != nil {
-			close(workerDone)
-			log.Info("worker stopped")
-		}
+		stopWorker()
 
 		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()

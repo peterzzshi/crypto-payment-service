@@ -79,7 +79,7 @@ jobs:
     - name: Run PostgreSQL contention tests
       env:
         TEST_DB_URL: postgres://postgres:postgres@localhost:5433/crypto_payment_service?sslmode=disable
-      run: go test -race -count=1 -v -run '^TestClaimByStatus_ConcurrentRace$' ./internal/repository/
+      run: go test -race -count=1 -v -run 'ConcurrentRace' ./internal/repository/
 
   build:
     name: Build

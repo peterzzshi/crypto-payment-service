@@ -22,36 +22,31 @@ Deliberately single service, single database. Real custody/payment systems (Stri
 
 **Solution**: ent schema-as-code in `ent/schema/`, generated client, repository interfaces unchanged (only implementations swap).
 
-## Phase 2 — Concurrency hardening
+## Phase 2 — Concurrency hardening ✓
 
-**Status**: Incomplete
+**Status**: Complete
 
 **Problem**: In-memory retry state and no row locking only work for one worker. Production ran multiple replicas.
 
 **Solution**: 
-- Transactional writes (deposit/withdrawal + event in single tx)
+- Transactional writes (deposit/withdrawal + event in single tx), enforced: audit-event write failures roll back the state change (ADR-0003)
 - `version` column for optimistic locking
 - `SELECT ... FOR UPDATE SKIP LOCKED` for batch claims
-- Exclusive claim-and-mark via transient `BROADCASTING` status for APPROVED withdrawals (broadcast is irreversible)
-- Persisted retry state (`retry_count`, `next_retry_at`)
+- Two claim strategies matched to the cost of duplicate work (ADR-0002): state-transition claim-and-mark via transient `BROADCASTING` status for the irreversible broadcast path; self-expiring leases (`locked_by`/`locked_until`) for idempotent confirmation polling
+- Persisted retry state (`retry_count`, `next_retry_at`); the APPROVED claim only picks up rows whose backoff has elapsed
 - `hot_wallets` table with `next_nonce` removed (BitGo manages nonces internally for custody wallets)
-
-**Remaining gap**: Event creation errors are logged and swallowed by service helpers, so the advertised transaction-plus-event atomicity is not enforced. Confirmation polling also releases row locks before processing and relies on optimistic locking, which prevents stale saves but does not provide exclusive processing.
 
 ## Phase 3 — Currency/Network model + BitGo
 
-**Status**: Incomplete
+**Status**: Mostly complete — model works end-to-end; provider contract still illustrative
 
 **Problem**: Flat `Asset` enum can't express "USDT on Tron" vs "USDT on Ethereum". Can't detect wrong-network deposits.
 
-**Solution**: Split into `Currency` + `Network`, config-driven `(Currency, Network)` pairs, BitGo adapter with single `/webhooks/bitgo` route (initially supporting BTC, ETH, USDT/Ethereum, USDT/Tron — BNB and USDT/BSC added in Phase 4). Risk-based confirmation tiers by amount (low/medium/high thresholds with increasing confirmation requirements). Legacy per-chain BTC/ETH adapters (`internal/adapter/btc`, `internal/adapter/eth`) have since been deleted — BitGo now unifies deposit ingestion and withdrawal confirmation-checking for all supported assets, and `RequiredConfirmations` is read directly off the persisted deposit/withdrawal record instead of re-derived from a per-chain adapter.
+**Solution**: Split into `Currency` + `Network`, config-driven `(Currency, Network)` pairs, BitGo adapter with single `/webhooks/bitgo` route (initially supporting BTC, ETH, USDT/Ethereum, USDT/Tron — BNB and USDT/BSC added in Phase 4). Risk-based confirmation tiers by amount (low/medium/high thresholds with increasing confirmation requirements). Legacy per-chain BTC/ETH adapters (`internal/adapter/btc`, `internal/adapter/eth`) have since been deleted — BitGo now unifies deposit ingestion and withdrawal confirmation-checking for all supported assets, and `RequiredConfirmations` is read directly off the persisted deposit/withdrawal record instead of re-derived from a per-chain adapter. Persistence is complete end-to-end: `currency`/`network` are written on create, read on every mapping, and address lookup keys on `(currency, network, address)`.
 
 **Remaining gaps**:
-- `DepositRepo.Create` does not set required `currency` and `network` fields
-- Deposit, withdrawal, and address read mappings omit `currency` and `network`
-- Address lookup still uses the deprecated flat `asset` field
 - The BitGo webhook structure is illustrative and has not been verified against live payloads
-- Withdrawal broadcast and confirmation checks use a stub rather than a BitGo API client
+- Withdrawal broadcast defaults to the stub; a BitGo HTTP broadcaster exists behind `BROADCAST_BACKEND=bitgo` (see Phase 8) but is unverified without testnet credentials
 
 ## Phase 4 — New assets + contract safety ✓
 
@@ -69,49 +64,41 @@ Deliberately single service, single database. Real custody/payment systems (Stri
 
 **Solution**: `deploy/k8s/` with Deployment (webhook-server + worker as separate), Service, ConfigMap, Secret (GCP Secret Manager CSI), HPA, PodDisruptionBudget. Illustrative, not applied.
 
-## Phase 6 — Concurrency test evidence
+## Phase 6 — Concurrency test evidence ✓
 
-**Status**: Incomplete
+**Status**: Complete
 
 **Problem**: Exclusive claim-and-mark needs PostgreSQL contention evidence. A test file alone is insufficient if it exercises the wrong source status or is skipped in CI.
 
-**Current state**: `internal/repository/withdrawal_repo_concurrency_test.go` races APPROVED withdrawals through the exclusive claim-and-mark path. CI supplies `TEST_DB_URL` and runs the test against its PostgreSQL service. Local test targets use short mode and require no database. The former placeholder shell scripts were removed; worker orchestration uses function injection and is tested in memory.
+**Current state**: Two contention tests run against PostgreSQL in CI (`-run ConcurrentRace`): `withdrawal_repo_concurrency_test.go` races APPROVED rows through the exclusive claim-and-mark path (each row claimed once, atomically BROADCASTING); `lease_claim_concurrency_test.go` races lease claims on CONFIRMING rows (each row leased to exactly one worker, unexpired leases block reclaiming, expired leases are reclaimable). Local test targets use short mode and require no database; worker orchestration uses function injection and is tested in memory.
 
-**Completion evidence required**: Race N goroutines against the same APPROVED rows, verify each row is returned once and atomically becomes BROADCASTING, and run that test against PostgreSQL in CI.
+## Phase 7 — Approval workflow ✓
 
-## Phase 7 — Approval workflow
-
-**Status**: In progress
+**Status**: Complete
 
 **Problem**: The demo needs an explicit approval decision before irreversible broadcast, with a defined actor, auditable events, retry behavior, and concurrency evidence.
 
-**Target**: Add APPROVED/REJECTED status constants and API actions, update transition validation, and make the worker claim APPROVED withdrawals. State flow: PENDING → APPROVED → BROADCASTING → CONFIRMING → COMPLETED (or PENDING → REJECTED as terminal state). Failed broadcasts should return to APPROVED for retry.
+**State flow**: PENDING → APPROVED → BROADCASTING → CONFIRMING → COMPLETED, with PENDING → REJECTED and PENDING/APPROVED → CANCELLED as terminal exits. Failed broadcasts return to APPROVED with backoff (`retry_count`, `next_retry_at`); after max retries, FAILED (terminal).
 
 **Implementation details**:
-- Added `WithdrawalStatusApproved` and `WithdrawalStatusRejected` constants
-- Created HTTP endpoints with customer-ownership and source-status checks
-- Implemented `Approve()` and `Reject()` service methods with validation
-- Updated `IsValidWithdrawalTransition()` with new state flow rules
-- Modified worker to claim APPROVED withdrawals using `claimAndMark()` pattern
-- Worker atomically transitions APPROVED → BROADCASTING using `SELECT ... FOR UPDATE SKIP LOCKED`
-- `go test ./...` and `go test -race ./...` pass when the PostgreSQL test is skipped, but there are no focused service or HTTP handler tests for Approve/Reject
-- The processor still assigns PENDING after retryable broadcast failures even though BROADCASTING → PENDING is no longer valid
-- The processor save helper re-fetches the row through `UpdateConfirmations`, so it does not persist the mutated retry count, retry time, failure reason, or intended APPROVED/FAILED status
-- Approval and rejection accept `customer_id` from the request body; the trusted actor and authorization contract are not yet defined
-- Approval/rejection event insert failures are logged and swallowed inside the transaction, so status and audit history are not atomic
+- Approver trust boundary defined (ADR-0001): actor identity arrives via the gateway-injected `X-Actor-ID` header; approve/reject enforce separation of duties (Approver ≠ owning Customer) and record the actor in the audit event; cancel requires the actor to own the withdrawal
+- `Approve()`/`Reject()`/`Cancel()` persist status + audit event atomically — event-write failures roll back the transaction (ADR-0003)
+- `claimAndMark` claims APPROVED rows whose retry backoff has elapsed, flips them to BROADCASTING, and writes the claim audit event in the same transaction
+- The processor persists broadcast outcomes through `ApplyBroadcastResult`: success → CONFIRMING; retryable → APPROVED with retry metadata; max-retries or non-retryable → FAILED. Invalid transitions are loud errors, never silent no-ops
+- Focused tests cover approve/reject (happy path, wrong status, separation of duties, event-write rollback), the processor (all four broadcast outcomes, optimistic-lock tolerance, retry-due filtering), and the HTTP handlers (actor extraction, 401/403/404)
 
-## Next milestone — Finish approval and broadcast correctness
+## Phase 8 — BitGo HTTP broadcaster
 
-**Status**: Awaiting design clarification
+**Status**: Implemented behind env switch, unverified against live API
 
-**Problem**: The approval actor/authorization boundary is unresolved, and the broadcast processor cannot yet persist the documented retry transitions. Starting another feature would compound an unverified money-movement lifecycle.
+**Problem**: The roadmap asked to decide between a documented stub and a real BitGo client.
 
-**Acceptance criteria**:
-- Complete currency/network persistence and read mapping before treating multi-asset flows as working
-- Make event persistence participate in transaction failure rather than swallowing audit-write errors
-- Define who can approve/reject and how trusted actor identity reaches this service
-- Persist successful and failed broadcast outcomes atomically, including retry metadata and audit events
-- Add focused service and HTTP tests for approve/reject, conflicts, and event-write failures
-- Keep the PostgreSQL APPROVED-row contention test running in CI
-- Add broader database integration coverage in CI and keep worker orchestration database-free through injected functions
-- Decide whether live BitGo API integration is in scope or keep the broadcaster explicitly documented as a stub
+**Decision**: Both. The broadcaster seam (`internal/broadcast/Broadcaster`) now has two implementations selected by `BROADCAST_BACKEND`: `stub` (default) and `bitgo` (HTTP client: sendcoins for broadcast, tx lookup for confirmations, BitGo coin codes mapped from `Currency`+`Network` with testnet variants, HTTP failures classified into the same retryable/non-retryable domain errors the state machine keys on). Unit tests pin the assumed request/response contract via `httptest`. The BitGo path is unverified without testnet credentials — flipping it on requires `BITGO_API_TOKEN`, `BITGO_WALLET_ID`, and optionally `BITGO_TESTNET`/`BITGO_COIN`/`BITGO_API_BASE`.
+
+## Next milestone — Reconciliation
+
+**Status**: Not started
+
+**Problem**: "What if the webhook never arrives?" currently has no implemented answer. A custody-grade system needs a periodic job that compares internal state against the provider's ledger and flags drift.
+
+**Scope to design**: ledger model (what is the internal source of truth for balances), which BitGo APIs to reconcile against, drift thresholds and alerting, and how reconciliation interacts with in-flight CONFIRMING rows.

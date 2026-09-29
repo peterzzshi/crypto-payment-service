@@ -18,11 +18,24 @@ Component overview and extension patterns.
 
 **Withdrawals**: PENDING → APPROVED → BROADCASTING → CONFIRMING → COMPLETED | FAILED
 
-Alternate terminal transitions: PENDING → REJECTED or PENDING → CANCELLED.
+Alternate terminal transitions: PENDING → REJECTED, PENDING/APPROVED → CANCELLED. Failed broadcasts return BROADCASTING → APPROVED with retry metadata (never PENDING — a transient error must not re-enter the human approval gate); after max retries or on non-retryable errors, FAILED (terminal).
 
-- **BROADCASTING** - Transient atomic claim state during broadcast (prevents double-broadcast in multi-worker setup)
-- **CANCELLED** - User cancellation (PENDING only, before blockchain broadcast)
-- **APPROVED/REJECTED** - Implemented states and HTTP actions; authorization semantics and end-to-end tests are still unresolved (see [roadmap.md](roadmap.md))
+- **BROADCASTING** - Transient atomic claim state during broadcast (prevents double-broadcast in multi-worker setup); claimed with a state-transition claim (`claimAndMark`)
+- **CONFIRMING (polling)** - Claimed with a self-expiring processing lease (`locked_by`/`locked_until`, ADR-0002); a crashed worker's rows become claimable again at lease expiry
+- **CANCELLED** - Customer cancellation from PENDING or APPROVED (before blockchain broadcast)
+- **APPROVED/REJECTED** - Set by an Approver via the approval endpoints; actor identity arrives via the gateway-injected `X-Actor-ID` header and separation of duties (Approver ≠ owning Customer) is enforced in the service (ADR-0001)
+- Every state change commits with its audit event in the same transaction; event-write failures roll back (ADR-0003)
+
+## In-Process Concurrency
+
+Cross-replica exclusion lives in the database (claims and leases, ADR-0002); within one replica, each claimed batch is processed with **bounded goroutine fan-out** (`errgroup` + `SetLimit(8)`). This is race-free by construction: rows are exclusively claimed before fan-out begins, each goroutine owns exactly one row, and no mutable state is shared between goroutines — which is also why there are no application-level mutexes.
+
+The bound exists to protect the two shared resources underneath:
+
+- **DB connection pool** — capped at 20 open / 5 idle connections with a 30-minute connection lifetime (`OpenEnt`)
+- **Custody provider rate limit** — at most 8 concurrent external calls per worker
+
+Each pipeline round shares one 10-second timeout so a slow provider cannot stretch a tick indefinitely, and worker shutdown waits for the in-flight round to finish before returning. A dedicated test proves the bound: a blocking broadcaster with a max-in-flight counter runs under `-race`.
 
 ## Error Handling
 
@@ -30,17 +43,17 @@ Domain errors implement `error` with `Unwrap()` for `errors.As()` checks.
 
 **Retryable**: `NetworkError`, `RateLimitError`  
 **Non-Retryable**: `HotWalletInsufficientFundsError`, `TransactionValidationError`  
-**Validation**: `InvalidAddressError`, `InvalidAmountError`, `InsufficientFundsError`
+**Validation**: `InvalidAddressError`, `InvalidAmountError`, `InsufficientFundsError`  
+**Authorization**: `AuthorizationError` (403 — e.g. separation-of-duties violation)
 
-**Retry intent**: Max 3 with exponential backoff from one minute. The current broadcast-error save path does not persist the intended retry state; Phase 7 remains incomplete until this is corrected and tested.
+**Retry behavior**: Max 3 with exponential backoff from one minute, persisted as `retry_count`/`next_retry_at`; the APPROVED claim only picks up rows whose backoff has elapsed.
 
 ## Demo Boundaries
 
-- Withdrawal broadcast and confirmation checks use `StubBroadcaster`; there is no live BitGo API client.
+- Withdrawal broadcast defaults to `StubBroadcaster`; a BitGo HTTP broadcaster exists behind `BROADCAST_BACKEND=bitgo` (see [roadmap.md](roadmap.md) Phase 8), pinned by `httptest` unit tests but unverified against live testnet without credentials.
 - The BitGo webhook payload model is illustrative and has not been checked against live provider payloads.
-- Authentication and authorization are expected to be supplied by an upstream IAM boundary, but the trusted identity/role contract for approval endpoints is not yet defined.
-- Currency/network fields exist in the schema and config, but current repository mappings are incomplete: deposit creation does not set the required fields, and deposit, withdrawal, and address reads omit them.
-- Event insert errors are currently logged rather than returned, so transaction records and audit events are not yet guaranteed to commit or roll back together.
+- Authentication is supplied by an upstream IAM boundary; this service trusts the gateway-injected `X-Actor-ID` header and enforces domain rules (ownership, separation of duties) on it (ADR-0001). There is no role check beyond that — "who may be an Approver" is the gateway's concern.
+- Reconciliation (comparing internal state against the provider ledger) is not yet implemented; it is the next milestone in the roadmap.
 
 
 ## Adding New Assets

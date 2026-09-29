@@ -14,11 +14,11 @@ import (
 
 func TestDepositService_UpsertIncoming(t *testing.T) {
 	tests := []struct {
-		name          string
-		request       domain.IncomingDeposit
-		setupMocks    func(*mockrepository.MockDepositRepository, *mockrepository.MockDepositEventRepository, *mockrepository.MockTxManager)
-		expectError   bool
-		errorType     interface{}
+		name           string
+		request        domain.IncomingDeposit
+		setupMocks     func(*mockrepository.MockDepositRepository, *mockrepository.MockDepositEventRepository, *mockrepository.MockTxManager)
+		expectError    bool
+		errorType      interface{}
 		validateResult func(*testing.T, *domain.Deposit)
 	}{
 		{
@@ -56,7 +56,7 @@ func TestDepositService_UpsertIncoming(t *testing.T) {
 				})).Return(nil)
 
 				er.EXPECT().Create(mock.Anything, mock.MatchedBy(func(e *domain.DepositEvent) bool {
-					return e.EventType == "CREATED"
+					return e.EventType == domain.EventDepositCreated
 				})).Return(nil)
 			},
 			expectError: false,
@@ -82,9 +82,9 @@ func TestDepositService_UpsertIncoming(t *testing.T) {
 			},
 			setupMocks: func(dr *mockrepository.MockDepositRepository, er *mockrepository.MockDepositEventRepository, tm *mockrepository.MockTxManager) {
 				existing := &domain.Deposit{
-					ID:           "deposit-1",
-					ExternalTxID: "tx-123",
-					Status:       domain.DepositStatusConfirming,
+					ID:            "deposit-1",
+					ExternalTxID:  "tx-123",
+					Status:        domain.DepositStatusConfirming,
 					Confirmations: 3,
 				}
 				dr.EXPECT().GetByExternalTxID(mock.Anything, "tx-123").

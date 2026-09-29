@@ -135,6 +135,16 @@ func FailureReason(v string) predicate.Withdrawal {
 	return predicate.Withdrawal(sql.FieldEQ(FieldFailureReason, v))
 }
 
+// LockedBy applies equality check predicate on the "locked_by" field. It's identical to LockedByEQ.
+func LockedBy(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldEQ(FieldLockedBy, v))
+}
+
+// LockedUntil applies equality check predicate on the "locked_until" field. It's identical to LockedUntilEQ.
+func LockedUntil(v time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldEQ(FieldLockedUntil, v))
+}
+
 // Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
 func Version(v int32) predicate.Withdrawal {
 	return predicate.Withdrawal(sql.FieldEQ(FieldVersion, v))
@@ -1008,6 +1018,131 @@ func TransactionMetadataIsNil() predicate.Withdrawal {
 // TransactionMetadataNotNil applies the NotNil predicate on the "transaction_metadata" field.
 func TransactionMetadataNotNil() predicate.Withdrawal {
 	return predicate.Withdrawal(sql.FieldNotNull(FieldTransactionMetadata))
+}
+
+// LockedByEQ applies the EQ predicate on the "locked_by" field.
+func LockedByEQ(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldEQ(FieldLockedBy, v))
+}
+
+// LockedByNEQ applies the NEQ predicate on the "locked_by" field.
+func LockedByNEQ(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldNEQ(FieldLockedBy, v))
+}
+
+// LockedByIn applies the In predicate on the "locked_by" field.
+func LockedByIn(vs ...string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldIn(FieldLockedBy, vs...))
+}
+
+// LockedByNotIn applies the NotIn predicate on the "locked_by" field.
+func LockedByNotIn(vs ...string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldNotIn(FieldLockedBy, vs...))
+}
+
+// LockedByGT applies the GT predicate on the "locked_by" field.
+func LockedByGT(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldGT(FieldLockedBy, v))
+}
+
+// LockedByGTE applies the GTE predicate on the "locked_by" field.
+func LockedByGTE(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldGTE(FieldLockedBy, v))
+}
+
+// LockedByLT applies the LT predicate on the "locked_by" field.
+func LockedByLT(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldLT(FieldLockedBy, v))
+}
+
+// LockedByLTE applies the LTE predicate on the "locked_by" field.
+func LockedByLTE(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldLTE(FieldLockedBy, v))
+}
+
+// LockedByContains applies the Contains predicate on the "locked_by" field.
+func LockedByContains(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldContains(FieldLockedBy, v))
+}
+
+// LockedByHasPrefix applies the HasPrefix predicate on the "locked_by" field.
+func LockedByHasPrefix(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldHasPrefix(FieldLockedBy, v))
+}
+
+// LockedByHasSuffix applies the HasSuffix predicate on the "locked_by" field.
+func LockedByHasSuffix(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldHasSuffix(FieldLockedBy, v))
+}
+
+// LockedByIsNil applies the IsNil predicate on the "locked_by" field.
+func LockedByIsNil() predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldIsNull(FieldLockedBy))
+}
+
+// LockedByNotNil applies the NotNil predicate on the "locked_by" field.
+func LockedByNotNil() predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldNotNull(FieldLockedBy))
+}
+
+// LockedByEqualFold applies the EqualFold predicate on the "locked_by" field.
+func LockedByEqualFold(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldEqualFold(FieldLockedBy, v))
+}
+
+// LockedByContainsFold applies the ContainsFold predicate on the "locked_by" field.
+func LockedByContainsFold(v string) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldContainsFold(FieldLockedBy, v))
+}
+
+// LockedUntilEQ applies the EQ predicate on the "locked_until" field.
+func LockedUntilEQ(v time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldEQ(FieldLockedUntil, v))
+}
+
+// LockedUntilNEQ applies the NEQ predicate on the "locked_until" field.
+func LockedUntilNEQ(v time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldNEQ(FieldLockedUntil, v))
+}
+
+// LockedUntilIn applies the In predicate on the "locked_until" field.
+func LockedUntilIn(vs ...time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldIn(FieldLockedUntil, vs...))
+}
+
+// LockedUntilNotIn applies the NotIn predicate on the "locked_until" field.
+func LockedUntilNotIn(vs ...time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldNotIn(FieldLockedUntil, vs...))
+}
+
+// LockedUntilGT applies the GT predicate on the "locked_until" field.
+func LockedUntilGT(v time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldGT(FieldLockedUntil, v))
+}
+
+// LockedUntilGTE applies the GTE predicate on the "locked_until" field.
+func LockedUntilGTE(v time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldGTE(FieldLockedUntil, v))
+}
+
+// LockedUntilLT applies the LT predicate on the "locked_until" field.
+func LockedUntilLT(v time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldLT(FieldLockedUntil, v))
+}
+
+// LockedUntilLTE applies the LTE predicate on the "locked_until" field.
+func LockedUntilLTE(v time.Time) predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldLTE(FieldLockedUntil, v))
+}
+
+// LockedUntilIsNil applies the IsNil predicate on the "locked_until" field.
+func LockedUntilIsNil() predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldIsNull(FieldLockedUntil))
+}
+
+// LockedUntilNotNil applies the NotNil predicate on the "locked_until" field.
+func LockedUntilNotNil() predicate.Withdrawal {
+	return predicate.Withdrawal(sql.FieldNotNull(FieldLockedUntil))
 }
 
 // VersionEQ applies the EQ predicate on the "version" field.

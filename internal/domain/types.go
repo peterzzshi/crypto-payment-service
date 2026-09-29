@@ -26,8 +26,8 @@ type SupportedPair struct {
 	Network  Network
 }
 
-// Asset is deprecated — use Currency + Network instead.
-// Kept temporarily for backward compatibility during migration.
+// Asset is deprecated — use Currency + Network instead. It remains only as a
+// persisted column; new code must not branch on it.
 type Asset string
 
 const (
@@ -35,17 +35,20 @@ const (
 	AssetETH Asset = "ETH"
 )
 
-// AssetToCurrencyNetwork converts a legacy Asset to Currency and Network
-func AssetToCurrencyNetwork(asset Asset) (Currency, Network) {
-	switch asset {
-	case AssetBTC:
-		return CurrencyBTC, NetworkBitcoin
-	case AssetETH:
-		return CurrencyETH, NetworkEthereum
-	default:
-		return "", ""
-	}
-}
+// Canonical audit event types: <aggregate>.<verb> (ADR-0003).
+const (
+	EventDepositCreated             = "deposit.created"
+	EventDepositConfirmationUpdated = "deposit.confirmation_updated"
+	EventDepositStatusChanged       = "deposit.status_changed"
+
+	EventWithdrawalCreated             = "withdrawal.created"
+	EventWithdrawalApproved            = "withdrawal.approved"
+	EventWithdrawalRejected            = "withdrawal.rejected"
+	EventWithdrawalCancelled           = "withdrawal.cancelled"
+	EventWithdrawalBroadcastClaimed    = "withdrawal.broadcast_claimed"
+	EventWithdrawalConfirmationUpdated = "withdrawal.confirmation_updated"
+	EventWithdrawalStatusChanged       = "withdrawal.status_changed"
+)
 
 type DepositStatus string
 

@@ -32,9 +32,6 @@ type WithdrawalRequest struct {
 }
 
 func NewWithdrawalService(withdrawals repository.WithdrawalRepository, events repository.WithdrawalEventRepository) *WithdrawalService {
-	if withdrawals == nil {
-		panic("withdrawals repository is required")
-	}
 	return &WithdrawalService{
 		withdrawals: withdrawals,
 		events:      events,
@@ -42,29 +39,29 @@ func NewWithdrawalService(withdrawals repository.WithdrawalRepository, events re
 	}
 }
 
-func (service *WithdrawalService) WithTxManager(txManager repository.TxManager) *WithdrawalService {
-	service.txManager = txManager
-	return service
+func (s *WithdrawalService) WithTxManager(txManager repository.TxManager) *WithdrawalService {
+	s.txManager = txManager
+	return s
 }
 
-func (service *WithdrawalService) reposFor(ctx context.Context) (repository.WithdrawalRepository, repository.WithdrawalEventRepository) {
+func (s *WithdrawalService) reposFor(ctx context.Context) (repository.WithdrawalRepository, repository.WithdrawalEventRepository) {
 	if repos, ok := repository.GetTxRepos(ctx); ok {
 		return repos.Withdrawals, repos.WithdrawalEvents
 	}
-	return service.withdrawals, service.events
+	return s.withdrawals, s.events
 }
 
-func (service *WithdrawalService) withTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	if service.txManager == nil {
+func (s *WithdrawalService) withTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if s.txManager == nil {
 		return fn(ctx)
 	}
-	return service.txManager.WithTx(ctx, fn)
+	return s.txManager.WithTx(ctx, fn)
 }
 
-func (service *WithdrawalService) Initiate(ctx context.Context, request WithdrawalRequest) (*domain.Withdrawal, error) {
+func (s *WithdrawalService) Initiate(ctx context.Context, request WithdrawalRequest) (*domain.Withdrawal, error) {
 	log := zap.L()
 
-	if err := service.validate.Struct(request); err != nil {
+	if err := s.validate.Struct(request); err != nil {
 		log.Warn("withdrawal request validation failed", zap.Error(err))
 		return nil, err
 	}
@@ -83,7 +80,7 @@ func (service *WithdrawalService) Initiate(ctx context.Context, request Withdraw
 
 	log.Info("initiating withdrawal")
 
-	existing, err := service.withdrawals.GetByIdempotencyKey(ctx, request.IdempotencyKey)
+	existing, err := s.withdrawals.GetByIdempotencyKey(ctx, request.IdempotencyKey)
 	if err == nil {
 		log.Info("idempotent withdrawal request, returning existing withdrawal")
 		return existing, nil
@@ -114,15 +111,26 @@ func (service *WithdrawalService) Initiate(ctx context.Context, request Withdraw
 		RequiredConfirmations: request.RequiredConfirmations,
 	}
 
-	err = service.withTx(ctx, func(ctx context.Context) error {
-		withdrawals, events := service.reposFor(ctx)
+	err = s.withTx(ctx, func(ctx context.Context) error {
+		withdrawals, events := s.reposFor(ctx)
 		if err := withdrawals.Create(ctx, withdrawal); err != nil {
 			return err
 		}
-		emitWithdrawalCreated(ctx, events, withdrawal)
-		return nil
+		return emitWithdrawalEvent(ctx, events, domain.EventWithdrawalCreated, withdrawal, nil, &withdrawal.Status,
+			map[string]any{"idempotency_key": withdrawal.IdempotencyKey})
 	})
 	if err != nil {
+		// A concurrent request with the same idempotency key won the
+		// check-then-create race: the unique constraint fired. Return the
+		// winning row instead of surfacing a conflict to the caller.
+		var conflict domain.ConflictError
+		if errors.As(err, &conflict) {
+			existing, getErr := s.withdrawals.GetByIdempotencyKey(ctx, request.IdempotencyKey)
+			if getErr == nil {
+				log.Info("idempotent withdrawal request (concurrent), returning existing withdrawal")
+				return existing, nil
+			}
+		}
 		log.Error("failed to create withdrawal", zap.Error(err))
 		return nil, err
 	}
@@ -130,48 +138,52 @@ func (service *WithdrawalService) Initiate(ctx context.Context, request Withdraw
 	return withdrawal, nil
 }
 
-func (service *WithdrawalService) Cancel(ctx context.Context, withdrawalID, customerID string) error {
+// Cancel cancels a PENDING or APPROVED withdrawal. The actor must be the
+// Customer who owns the withdrawal; a mismatch returns NotFoundError to avoid
+// leaking the existence of other customers' withdrawals.
+func (s *WithdrawalService) Cancel(ctx context.Context, withdrawalID, actorID string) error {
 	log := zap.L().With(
 		zap.String("withdrawal_id", withdrawalID),
-		zap.String("customer_id", customerID),
+		zap.String("actor_id", actorID),
 	)
 
 	if withdrawalID == "" {
 		return domain.ValidationError{Field: "withdrawalID", Message: "required"}
 	}
-	if customerID == "" {
-		return domain.ValidationError{Field: "customerID", Message: "required"}
+	if actorID == "" {
+		return domain.ValidationError{Field: "actorID", Message: "required"}
 	}
 
 	log.Info("attempting to cancel withdrawal")
 
-	withdrawal, err := service.withdrawals.GetByID(ctx, withdrawalID)
+	withdrawal, err := s.withdrawals.GetByID(ctx, withdrawalID)
 	if err != nil {
 		log.Error("failed to retrieve withdrawal", zap.Error(err))
 		return err
 	}
 
-	if withdrawal.CustomerID != customerID {
-		log.Warn("customer ID mismatch")
+	if withdrawal.CustomerID != actorID {
+		log.Warn("actor is not the owning customer")
 		return domain.NotFoundError{Resource: "withdrawal"}
 	}
 
-	if withdrawal.Status != domain.WithdrawalStatusPending {
+	if withdrawal.Status != domain.WithdrawalStatusPending && withdrawal.Status != domain.WithdrawalStatusApproved {
 		log.Warn(fmt.Sprintf("cannot cancel withdrawal in %s status", withdrawal.Status))
 		return domain.ValidationError{
 			Field:   "status",
-			Message: fmt.Sprintf("only PENDING withdrawals can be cancelled, current status: %s", withdrawal.Status),
+			Message: fmt.Sprintf("only PENDING or APPROVED withdrawals can be cancelled, current status: %s", withdrawal.Status),
 		}
 	}
 
+	fromStatus := withdrawal.Status
 	withdrawal.Status = domain.WithdrawalStatusCancelled
-	err = service.withTx(ctx, func(ctx context.Context) error {
-		withdrawals, events := service.reposFor(ctx)
+	err = s.withTx(ctx, func(ctx context.Context) error {
+		withdrawals, events := s.reposFor(ctx)
 		if err := withdrawals.Save(ctx, withdrawal); err != nil {
 			return err
 		}
-		emitWithdrawalCancelled(ctx, events, withdrawal, domain.WithdrawalStatusPending)
-		return nil
+		return emitWithdrawalEvent(ctx, events, domain.EventWithdrawalCancelled, withdrawal, &fromStatus, &withdrawal.Status,
+			map[string]any{"actor_id": actorID, "actor_role": "customer", "reason": "user_requested"})
 	})
 	if err != nil {
 		var lockErr domain.OptimisticLockError
@@ -187,30 +199,34 @@ func (service *WithdrawalService) Cancel(ctx context.Context, withdrawalID, cust
 	return nil
 }
 
-func (service *WithdrawalService) Approve(ctx context.Context, withdrawalID, customerID string) error {
+// Approve marks a PENDING withdrawal as ready for broadcast. The actor is an
+// Approver (internal operator or risk service) and is recorded in the audit
+// event. Separation of duties: the Approver can never be the Customer who
+// owns the withdrawal.
+func (s *WithdrawalService) Approve(ctx context.Context, withdrawalID, actorID string) error {
 	log := zap.L().With(
 		zap.String("withdrawal_id", withdrawalID),
-		zap.String("customer_id", customerID),
+		zap.String("actor_id", actorID),
 	)
 
 	if withdrawalID == "" {
 		return domain.ValidationError{Field: "withdrawalID", Message: "required"}
 	}
-	if customerID == "" {
-		return domain.ValidationError{Field: "customerID", Message: "required"}
+	if actorID == "" {
+		return domain.ValidationError{Field: "actorID", Message: "required"}
 	}
 
 	log.Info("attempting to approve withdrawal")
 
-	withdrawal, err := service.withdrawals.GetByID(ctx, withdrawalID)
+	withdrawal, err := s.withdrawals.GetByID(ctx, withdrawalID)
 	if err != nil {
 		log.Error("failed to retrieve withdrawal", zap.Error(err))
 		return err
 	}
 
-	if withdrawal.CustomerID != customerID {
-		log.Warn("customer ID mismatch")
-		return domain.NotFoundError{Resource: "withdrawal"}
+	if withdrawal.CustomerID == actorID {
+		log.Warn("approver must not be the owning customer (separation of duties)")
+		return domain.AuthorizationError{Reason: "approver must not be the withdrawal owner"}
 	}
 
 	if withdrawal.Status != domain.WithdrawalStatusPending {
@@ -223,23 +239,13 @@ func (service *WithdrawalService) Approve(ctx context.Context, withdrawalID, cus
 
 	fromStatus := withdrawal.Status
 	withdrawal.Status = domain.WithdrawalStatusApproved
-	err = service.withTx(ctx, func(ctx context.Context) error {
-		withdrawals, events := service.reposFor(ctx)
+	err = s.withTx(ctx, func(ctx context.Context) error {
+		withdrawals, events := s.reposFor(ctx)
 		if err := withdrawals.Save(ctx, withdrawal); err != nil {
 			return err
 		}
-		if events != nil {
-			event := &domain.WithdrawalEvent{
-				WithdrawalID: withdrawal.ID,
-				EventType:    "withdrawal.approved",
-				FromStatus:   &fromStatus,
-				ToStatus:     &withdrawal.Status,
-			}
-			if err := events.Create(ctx, event); err != nil {
-				log.Error("failed to create approval event", zap.Error(err))
-			}
-		}
-		return nil
+		return emitWithdrawalEvent(ctx, events, domain.EventWithdrawalApproved, withdrawal, &fromStatus, &withdrawal.Status,
+			map[string]any{"actor_id": actorID, "actor_role": "approver"})
 	})
 	if err != nil {
 		var lockErr domain.OptimisticLockError
@@ -255,30 +261,32 @@ func (service *WithdrawalService) Approve(ctx context.Context, withdrawalID, cus
 	return nil
 }
 
-func (service *WithdrawalService) Reject(ctx context.Context, withdrawalID, customerID, rejectionNote string) error {
+// Reject marks a PENDING withdrawal as terminally rejected, with the same
+// Approver identity and separation-of-duties rules as Approve.
+func (s *WithdrawalService) Reject(ctx context.Context, withdrawalID, actorID, rejectionNote string) error {
 	log := zap.L().With(
 		zap.String("withdrawal_id", withdrawalID),
-		zap.String("customer_id", customerID),
+		zap.String("actor_id", actorID),
 	)
 
 	if withdrawalID == "" {
 		return domain.ValidationError{Field: "withdrawalID", Message: "required"}
 	}
-	if customerID == "" {
-		return domain.ValidationError{Field: "customerID", Message: "required"}
+	if actorID == "" {
+		return domain.ValidationError{Field: "actorID", Message: "required"}
 	}
 
 	log.Info("attempting to reject withdrawal")
 
-	withdrawal, err := service.withdrawals.GetByID(ctx, withdrawalID)
+	withdrawal, err := s.withdrawals.GetByID(ctx, withdrawalID)
 	if err != nil {
 		log.Error("failed to retrieve withdrawal", zap.Error(err))
 		return err
 	}
 
-	if withdrawal.CustomerID != customerID {
-		log.Warn("customer ID mismatch")
-		return domain.NotFoundError{Resource: "withdrawal"}
+	if withdrawal.CustomerID == actorID {
+		log.Warn("rejector must not be the owning customer (separation of duties)")
+		return domain.AuthorizationError{Reason: "rejector must not be the withdrawal owner"}
 	}
 
 	if withdrawal.Status != domain.WithdrawalStatusPending {
@@ -294,28 +302,16 @@ func (service *WithdrawalService) Reject(ctx context.Context, withdrawalID, cust
 	if rejectionNote != "" {
 		withdrawal.FailureReason = &rejectionNote
 	}
-	err = service.withTx(ctx, func(ctx context.Context) error {
-		withdrawals, events := service.reposFor(ctx)
+	err = s.withTx(ctx, func(ctx context.Context) error {
+		withdrawals, events := s.reposFor(ctx)
 		if err := withdrawals.Save(ctx, withdrawal); err != nil {
 			return err
 		}
-		if events != nil {
-			metadata := make(map[string]any)
-			if rejectionNote != "" {
-				metadata["rejection_note"] = rejectionNote
-			}
-			event := &domain.WithdrawalEvent{
-				WithdrawalID: withdrawal.ID,
-				EventType:    "withdrawal.rejected",
-				FromStatus:   &fromStatus,
-				ToStatus:     &withdrawal.Status,
-				Metadata:     metadata,
-			}
-			if err := events.Create(ctx, event); err != nil {
-				log.Error("failed to create rejection event", zap.Error(err))
-			}
+		metadata := map[string]any{"actor_id": actorID, "actor_role": "approver"}
+		if rejectionNote != "" {
+			metadata["rejection_note"] = rejectionNote
 		}
-		return nil
+		return emitWithdrawalEvent(ctx, events, domain.EventWithdrawalRejected, withdrawal, &fromStatus, &withdrawal.Status, metadata)
 	})
 	if err != nil {
 		var lockErr domain.OptimisticLockError
@@ -331,29 +327,72 @@ func (service *WithdrawalService) Reject(ctx context.Context, withdrawalID, cust
 	return nil
 }
 
-func (service *WithdrawalService) UpdateConfirmations(ctx context.Context, withdrawalID string, confirmations int, txHash *string) (*domain.Withdrawal, error) {
+// ApplyBroadcastResult persists the outcome of a broadcast attempt — success
+// (CONFIRMING with tx hash) or failure (APPROVED with retry metadata, or
+// FAILED) — atomically with its audit event. The withdrawal must carry the
+// version obtained when the row was claimed (BROADCASTING). An invalid
+// transition is a loud error, not a silent no-op: persisting a wrong state on
+// a money-movement path must never be swallowed.
+func (s *WithdrawalService) ApplyBroadcastResult(ctx context.Context, withdrawal *domain.Withdrawal, prevStatus domain.WithdrawalStatus) error {
+	log := zap.L().With(
+		zap.String("withdrawal_id", withdrawal.ID),
+		zap.String("from_status", string(prevStatus)),
+		zap.String("to_status", string(withdrawal.Status)),
+	)
+
+	if !IsValidWithdrawalTransition(prevStatus, withdrawal.Status) {
+		log.Error("invalid broadcast result transition, refusing to persist")
+		return domain.ValidationError{
+			Field:   "status",
+			Message: fmt.Sprintf("invalid transition from %s to %s", prevStatus, withdrawal.Status),
+		}
+	}
+
+	metadata := map[string]any{"retry_count": withdrawal.RetryCount}
+	if withdrawal.TxHash != nil {
+		metadata["tx_hash"] = *withdrawal.TxHash
+	}
+	if withdrawal.FailureReason != nil {
+		metadata["failure_reason"] = *withdrawal.FailureReason
+	}
+
+	err := s.withTx(ctx, func(ctx context.Context) error {
+		withdrawals, events := s.reposFor(ctx)
+		if err := withdrawals.Save(ctx, withdrawal); err != nil {
+			return err
+		}
+		return emitWithdrawalEvent(ctx, events, domain.EventWithdrawalStatusChanged, withdrawal, &prevStatus, &withdrawal.Status, metadata)
+	})
+	if err != nil {
+		return err
+	}
+	log.Info("broadcast result persisted")
+	return nil
+}
+
+func (s *WithdrawalService) UpdateConfirmations(ctx context.Context, withdrawalID string, confirmations int, txHash *string) (*domain.Withdrawal, error) {
 	log := zap.L().With(
 		zap.String("withdrawal_id", withdrawalID),
 		zap.Int("confirmations", confirmations),
 	)
 
-	withdrawal, err := service.withdrawals.GetByID(ctx, withdrawalID)
+	withdrawal, err := s.withdrawals.GetByID(ctx, withdrawalID)
 	if err != nil {
 		log.Error("failed to retrieve withdrawal", zap.Error(err))
 		return nil, err
 	}
 
-	updated, ok, err := service.applyConfirmationUpdate(ctx, withdrawal, confirmations, txHash)
+	updated, ok, err := s.applyConfirmationUpdate(ctx, withdrawal, confirmations, txHash)
 	if err != nil {
 		var lockErr domain.OptimisticLockError
 		if errors.As(err, &lockErr) {
 			log.Warn("optimistic lock conflict on confirmation update, retrying once", zap.Error(err))
-			refetched, getErr := service.withdrawals.GetByID(ctx, withdrawalID)
+			refetched, getErr := s.withdrawals.GetByID(ctx, withdrawalID)
 			if getErr != nil {
 				log.Error("failed to re-fetch withdrawal after lock conflict", zap.Error(getErr))
 				return nil, getErr
 			}
-			updated, ok, err = service.applyConfirmationUpdate(ctx, refetched, confirmations, txHash)
+			updated, ok, err = s.applyConfirmationUpdate(ctx, refetched, confirmations, txHash)
 			if err != nil {
 				log.Error("failed to save withdrawal update after retry", zap.Error(err))
 				return nil, err
@@ -370,7 +409,7 @@ func (service *WithdrawalService) UpdateConfirmations(ctx context.Context, withd
 	return updated, nil
 }
 
-func (service *WithdrawalService) applyConfirmationUpdate(ctx context.Context, existing *domain.Withdrawal, confirmations int, txHash *string) (*domain.Withdrawal, bool, error) {
+func (s *WithdrawalService) applyConfirmationUpdate(ctx context.Context, existing *domain.Withdrawal, confirmations int, txHash *string) (*domain.Withdrawal, bool, error) {
 	log := zap.L()
 
 	updated := cloneWithdrawal(existing)
@@ -391,13 +430,12 @@ func (service *WithdrawalService) applyConfirmationUpdate(ctx context.Context, e
 
 	updated.Status = newStatus
 
-	err := service.withTx(ctx, func(ctx context.Context) error {
-		withdrawals, events := service.reposFor(ctx)
+	err := s.withTx(ctx, func(ctx context.Context) error {
+		withdrawals, events := s.reposFor(ctx)
 		if err := withdrawals.Save(ctx, &updated); err != nil {
 			return err
 		}
-		emitWithdrawalEvents(ctx, events, &updated, prevStatus, prevConfirmations)
-		return nil
+		return emitWithdrawalProgressEvents(ctx, events, &updated, prevStatus, prevConfirmations)
 	})
 	if err != nil {
 		return nil, false, err
@@ -451,66 +489,42 @@ func nextWithdrawalStatus(confirmations, required int, currentStatus domain.With
 	return currentStatus
 }
 
-func emitWithdrawalCreated(ctx context.Context, events repository.WithdrawalEventRepository, withdrawal *domain.Withdrawal) {
+// emitWithdrawalEvent writes a single audit event. Failures propagate so the
+// surrounding transaction rolls back: a state change without its audit event
+// is a failed state change (ADR-0003).
+func emitWithdrawalEvent(ctx context.Context, events repository.WithdrawalEventRepository, eventType string, withdrawal *domain.Withdrawal, fromStatus, toStatus *domain.WithdrawalStatus, metadata map[string]any) error {
 	if events == nil {
-		return
+		return nil
 	}
 	event := domain.WithdrawalEvent{
 		WithdrawalID: withdrawal.ID,
-		EventType:    "CREATED",
-		ToStatus:     &withdrawal.Status,
-		Metadata:     map[string]any{"idempotency_key": withdrawal.IdempotencyKey},
+		EventType:    eventType,
+		FromStatus:   fromStatus,
+		ToStatus:     toStatus,
+		Metadata:     metadata,
 		CreatedAt:    time.Now(),
 	}
 	if err := events.Create(ctx, &event); err != nil {
-		zap.L().Error("failed to create event", zap.Error(err))
+		zap.L().Error("failed to create withdrawal event",
+			zap.String("event_type", eventType), zap.Error(err))
+		return fmt.Errorf("audit event %s: %w", eventType, err)
 	}
+	return nil
 }
 
-func emitWithdrawalEvents(ctx context.Context, events repository.WithdrawalEventRepository, withdrawal *domain.Withdrawal, prevStatus domain.WithdrawalStatus, prevConfs int) {
-	if events == nil {
-		return
-	}
+func emitWithdrawalProgressEvents(ctx context.Context, events repository.WithdrawalEventRepository, withdrawal *domain.Withdrawal, prevStatus domain.WithdrawalStatus, prevConfs int) error {
 	if withdrawal.Confirmations > prevConfs {
-		event := domain.WithdrawalEvent{
-			WithdrawalID: withdrawal.ID,
-			EventType:    "CONFIRMATION_UPDATED",
-			Metadata:     map[string]any{"confirmations": withdrawal.Confirmations},
-			CreatedAt:    time.Now(),
-		}
-		if err := events.Create(ctx, &event); err != nil {
-			zap.L().Error("failed to create confirmation event", zap.Error(err))
+		if err := emitWithdrawalEvent(ctx, events, domain.EventWithdrawalConfirmationUpdated, withdrawal, nil, nil,
+			map[string]any{"confirmations": withdrawal.Confirmations}); err != nil {
+			return err
 		}
 	}
 	if withdrawal.Status != prevStatus {
-		event := domain.WithdrawalEvent{
-			WithdrawalID: withdrawal.ID,
-			EventType:    "STATUS_CHANGED",
-			FromStatus:   &prevStatus,
-			ToStatus:     &withdrawal.Status,
-			CreatedAt:    time.Now(),
-		}
-		if err := events.Create(ctx, &event); err != nil {
-			zap.L().Error("failed to create status change event", zap.Error(err))
+		if err := emitWithdrawalEvent(ctx, events, domain.EventWithdrawalStatusChanged, withdrawal, &prevStatus, &withdrawal.Status, nil); err != nil {
+			return err
 		}
 	}
-}
-
-func emitWithdrawalCancelled(ctx context.Context, events repository.WithdrawalEventRepository, withdrawal *domain.Withdrawal, prevStatus domain.WithdrawalStatus) {
-	if events == nil {
-		return
-	}
-	event := domain.WithdrawalEvent{
-		WithdrawalID: withdrawal.ID,
-		EventType:    "CANCELLED",
-		FromStatus:   &prevStatus,
-		ToStatus:     &withdrawal.Status,
-		Metadata:     map[string]any{"reason": "user_requested"},
-		CreatedAt:    time.Now(),
-	}
-	if err := events.Create(ctx, &event); err != nil {
-		zap.L().Error("failed to create cancellation event", zap.Error(err))
-	}
+	return nil
 }
 
 func IsValidWithdrawalTransition(from, to domain.WithdrawalStatus) bool {

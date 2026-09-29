@@ -14,11 +14,11 @@ import (
 
 func TestWithdrawalService_Initiate(t *testing.T) {
 	tests := []struct {
-		name          string
-		request       WithdrawalRequest
-		setupMocks    func(*mockrepository.MockWithdrawalRepository, *mockrepository.MockWithdrawalEventRepository, *mockrepository.MockTxManager)
-		expectError   bool
-		errorType     interface{}
+		name           string
+		request        WithdrawalRequest
+		setupMocks     func(*mockrepository.MockWithdrawalRepository, *mockrepository.MockWithdrawalEventRepository, *mockrepository.MockTxManager)
+		expectError    bool
+		errorType      interface{}
 		validateResult func(*testing.T, *domain.Withdrawal)
 	}{
 		{
@@ -49,7 +49,7 @@ func TestWithdrawalService_Initiate(t *testing.T) {
 						w.RequiredConfirmations == 6
 				})).Return(nil)
 				er.EXPECT().Create(mock.Anything, mock.MatchedBy(func(e *domain.WithdrawalEvent) bool {
-					return e.EventType == "CREATED"
+					return e.EventType == domain.EventWithdrawalCreated
 				})).Return(nil)
 			},
 			expectError: false,
@@ -155,12 +155,12 @@ func TestWithdrawalService_Initiate(t *testing.T) {
 
 func TestWithdrawalService_Cancel(t *testing.T) {
 	tests := []struct {
-		name        string
+		name         string
 		withdrawalID string
-		customerID  string
-		setupMocks  func(*mockrepository.MockWithdrawalRepository, *mockrepository.MockWithdrawalEventRepository, *mockrepository.MockTxManager)
-		expectError bool
-		errorType   interface{}
+		customerID   string
+		setupMocks   func(*mockrepository.MockWithdrawalRepository, *mockrepository.MockWithdrawalEventRepository, *mockrepository.MockTxManager)
+		expectError  bool
+		errorType    interface{}
 	}{
 		{
 			name:         "successful cancellation",
@@ -183,7 +183,7 @@ func TestWithdrawalService_Cancel(t *testing.T) {
 					return w.Status == domain.WithdrawalStatusCancelled
 				})).Return(nil)
 				er.EXPECT().Create(mock.Anything, mock.MatchedBy(func(e *domain.WithdrawalEvent) bool {
-					return e.EventType == "CANCELLED"
+					return e.EventType == domain.EventWithdrawalCancelled
 				})).Return(nil)
 			},
 			expectError: false,
@@ -296,10 +296,10 @@ func TestWithdrawalService_UpdateConfirmations(t *testing.T) {
 						w.TxHash != nil
 				})).Return(nil)
 				er.EXPECT().Create(mock.Anything, mock.MatchedBy(func(e *domain.WithdrawalEvent) bool {
-					return e.EventType == "CONFIRMATION_UPDATED"
+					return e.EventType == domain.EventWithdrawalConfirmationUpdated
 				})).Return(nil)
 				er.EXPECT().Create(mock.Anything, mock.MatchedBy(func(e *domain.WithdrawalEvent) bool {
-					return e.EventType == "STATUS_CHANGED"
+					return e.EventType == domain.EventWithdrawalStatusChanged
 				})).Return(nil)
 			},
 			expectError: false,
@@ -333,7 +333,7 @@ func TestWithdrawalService_UpdateConfirmations(t *testing.T) {
 					return w.Status == domain.WithdrawalStatusConfirming && w.TxHash != nil
 				})).Return(nil)
 				er.EXPECT().Create(mock.Anything, mock.MatchedBy(func(e *domain.WithdrawalEvent) bool {
-					return e.EventType == "STATUS_CHANGED"
+					return e.EventType == domain.EventWithdrawalStatusChanged
 				})).Return(nil)
 			},
 			expectError: false,

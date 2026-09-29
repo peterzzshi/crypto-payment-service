@@ -44,6 +44,10 @@ type Deposit struct {
 	RequiredConfirmations int `json:"required_confirmations,omitempty"`
 	// TransactionMetadata holds the value of the "transaction_metadata" field.
 	TransactionMetadata map[string]interface{} `json:"transaction_metadata,omitempty"`
+	// Worker identity holding the processing lease (ADR-0002)
+	LockedBy *string `json:"locked_by,omitempty"`
+	// Lease expiry; expired leases are reclaimable
+	LockedUntil *time.Time `json:"locked_until,omitempty"`
 	// Version holds the value of the "version" field.
 	Version int32 `json:"version,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -109,9 +113,9 @@ func (*Deposit) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case deposit.FieldConfirmations, deposit.FieldRequiredConfirmations, deposit.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case deposit.FieldID, deposit.FieldCustomerID, deposit.FieldAddressID, deposit.FieldExternalTxID, deposit.FieldTxHash, deposit.FieldCurrency, deposit.FieldNetwork, deposit.FieldAsset, deposit.FieldAmountAtomic, deposit.FieldStatus:
+		case deposit.FieldID, deposit.FieldCustomerID, deposit.FieldAddressID, deposit.FieldExternalTxID, deposit.FieldTxHash, deposit.FieldCurrency, deposit.FieldNetwork, deposit.FieldAsset, deposit.FieldAmountAtomic, deposit.FieldStatus, deposit.FieldLockedBy:
 			values[i] = new(sql.NullString)
-		case deposit.FieldCreatedAt, deposit.FieldUpdatedAt:
+		case deposit.FieldLockedUntil, deposit.FieldCreatedAt, deposit.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -208,6 +212,20 @@ func (_m *Deposit) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.TransactionMetadata); err != nil {
 					return fmt.Errorf("unmarshal field transaction_metadata: %w", err)
 				}
+			}
+		case deposit.FieldLockedBy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field locked_by", values[i])
+			} else if value.Valid {
+				_m.LockedBy = new(string)
+				*_m.LockedBy = value.String
+			}
+		case deposit.FieldLockedUntil:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field locked_until", values[i])
+			} else if value.Valid {
+				_m.LockedUntil = new(time.Time)
+				*_m.LockedUntil = value.Time
 			}
 		case deposit.FieldVersion:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -315,6 +333,16 @@ func (_m *Deposit) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("transaction_metadata=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TransactionMetadata))
+	builder.WriteString(", ")
+	if v := _m.LockedBy; v != nil {
+		builder.WriteString("locked_by=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.LockedUntil; v != nil {
+		builder.WriteString("locked_until=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Version))

@@ -268,6 +268,46 @@ func (_u *WithdrawalUpdate) ClearTransactionMetadata() *WithdrawalUpdate {
 	return _u
 }
 
+// SetLockedBy sets the "locked_by" field.
+func (_u *WithdrawalUpdate) SetLockedBy(v string) *WithdrawalUpdate {
+	_u.mutation.SetLockedBy(v)
+	return _u
+}
+
+// SetNillableLockedBy sets the "locked_by" field if the given value is not nil.
+func (_u *WithdrawalUpdate) SetNillableLockedBy(v *string) *WithdrawalUpdate {
+	if v != nil {
+		_u.SetLockedBy(*v)
+	}
+	return _u
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (_u *WithdrawalUpdate) ClearLockedBy() *WithdrawalUpdate {
+	_u.mutation.ClearLockedBy()
+	return _u
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (_u *WithdrawalUpdate) SetLockedUntil(v time.Time) *WithdrawalUpdate {
+	_u.mutation.SetLockedUntil(v)
+	return _u
+}
+
+// SetNillableLockedUntil sets the "locked_until" field if the given value is not nil.
+func (_u *WithdrawalUpdate) SetNillableLockedUntil(v *time.Time) *WithdrawalUpdate {
+	if v != nil {
+		_u.SetLockedUntil(*v)
+	}
+	return _u
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (_u *WithdrawalUpdate) ClearLockedUntil() *WithdrawalUpdate {
+	_u.mutation.ClearLockedUntil()
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *WithdrawalUpdate) SetVersion(v int32) *WithdrawalUpdate {
 	_u.mutation.ResetVersion()
@@ -477,6 +517,18 @@ func (_u *WithdrawalUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if _u.mutation.TransactionMetadataCleared() {
 		_spec.ClearField(withdrawal.FieldTransactionMetadata, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.LockedBy(); ok {
+		_spec.SetField(withdrawal.FieldLockedBy, field.TypeString, value)
+	}
+	if _u.mutation.LockedByCleared() {
+		_spec.ClearField(withdrawal.FieldLockedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.LockedUntil(); ok {
+		_spec.SetField(withdrawal.FieldLockedUntil, field.TypeTime, value)
+	}
+	if _u.mutation.LockedUntilCleared() {
+		_spec.ClearField(withdrawal.FieldLockedUntil, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(withdrawal.FieldVersion, field.TypeInt32, value)
@@ -791,6 +843,46 @@ func (_u *WithdrawalUpdateOne) ClearTransactionMetadata() *WithdrawalUpdateOne {
 	return _u
 }
 
+// SetLockedBy sets the "locked_by" field.
+func (_u *WithdrawalUpdateOne) SetLockedBy(v string) *WithdrawalUpdateOne {
+	_u.mutation.SetLockedBy(v)
+	return _u
+}
+
+// SetNillableLockedBy sets the "locked_by" field if the given value is not nil.
+func (_u *WithdrawalUpdateOne) SetNillableLockedBy(v *string) *WithdrawalUpdateOne {
+	if v != nil {
+		_u.SetLockedBy(*v)
+	}
+	return _u
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (_u *WithdrawalUpdateOne) ClearLockedBy() *WithdrawalUpdateOne {
+	_u.mutation.ClearLockedBy()
+	return _u
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (_u *WithdrawalUpdateOne) SetLockedUntil(v time.Time) *WithdrawalUpdateOne {
+	_u.mutation.SetLockedUntil(v)
+	return _u
+}
+
+// SetNillableLockedUntil sets the "locked_until" field if the given value is not nil.
+func (_u *WithdrawalUpdateOne) SetNillableLockedUntil(v *time.Time) *WithdrawalUpdateOne {
+	if v != nil {
+		_u.SetLockedUntil(*v)
+	}
+	return _u
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (_u *WithdrawalUpdateOne) ClearLockedUntil() *WithdrawalUpdateOne {
+	_u.mutation.ClearLockedUntil()
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *WithdrawalUpdateOne) SetVersion(v int32) *WithdrawalUpdateOne {
 	_u.mutation.ResetVersion()
@@ -1030,6 +1122,18 @@ func (_u *WithdrawalUpdateOne) sqlSave(ctx context.Context) (_node *Withdrawal, 
 	}
 	if _u.mutation.TransactionMetadataCleared() {
 		_spec.ClearField(withdrawal.FieldTransactionMetadata, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.LockedBy(); ok {
+		_spec.SetField(withdrawal.FieldLockedBy, field.TypeString, value)
+	}
+	if _u.mutation.LockedByCleared() {
+		_spec.ClearField(withdrawal.FieldLockedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.LockedUntil(); ok {
+		_spec.SetField(withdrawal.FieldLockedUntil, field.TypeTime, value)
+	}
+	if _u.mutation.LockedUntilCleared() {
+		_spec.ClearField(withdrawal.FieldLockedUntil, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(withdrawal.FieldVersion, field.TypeInt32, value)

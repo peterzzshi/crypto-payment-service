@@ -119,6 +119,34 @@ func (_c *DepositCreate) SetTransactionMetadata(v map[string]interface{}) *Depos
 	return _c
 }
 
+// SetLockedBy sets the "locked_by" field.
+func (_c *DepositCreate) SetLockedBy(v string) *DepositCreate {
+	_c.mutation.SetLockedBy(v)
+	return _c
+}
+
+// SetNillableLockedBy sets the "locked_by" field if the given value is not nil.
+func (_c *DepositCreate) SetNillableLockedBy(v *string) *DepositCreate {
+	if v != nil {
+		_c.SetLockedBy(*v)
+	}
+	return _c
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (_c *DepositCreate) SetLockedUntil(v time.Time) *DepositCreate {
+	_c.mutation.SetLockedUntil(v)
+	return _c
+}
+
+// SetNillableLockedUntil sets the "locked_until" field if the given value is not nil.
+func (_c *DepositCreate) SetNillableLockedUntil(v *time.Time) *DepositCreate {
+	if v != nil {
+		_c.SetLockedUntil(*v)
+	}
+	return _c
+}
+
 // SetVersion sets the "version" field.
 func (_c *DepositCreate) SetVersion(v int32) *DepositCreate {
 	_c.mutation.SetVersion(v)
@@ -395,6 +423,14 @@ func (_c *DepositCreate) createSpec() (*Deposit, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TransactionMetadata(); ok {
 		_spec.SetField(deposit.FieldTransactionMetadata, field.TypeJSON, value)
 		_node.TransactionMetadata = value
+	}
+	if value, ok := _c.mutation.LockedBy(); ok {
+		_spec.SetField(deposit.FieldLockedBy, field.TypeString, value)
+		_node.LockedBy = &value
+	}
+	if value, ok := _c.mutation.LockedUntil(); ok {
+		_spec.SetField(deposit.FieldLockedUntil, field.TypeTime, value)
+		_node.LockedUntil = &value
 	}
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(deposit.FieldVersion, field.TypeInt32, value)

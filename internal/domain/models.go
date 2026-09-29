@@ -11,14 +11,16 @@ type Deposit struct {
 	AddressID             string
 	ExternalTxID          string
 	TxHash                *string
-	Currency              Currency // New: chain-independent currency
-	Network               Network  // New: blockchain/rail
-	Asset                 Asset    // Deprecated: use Currency + Network
+	Currency              Currency
+	Network               Network
+	Asset                 Asset // Deprecated: use Currency + Network
 	AmountAtomic          *big.Int
 	Status                DepositStatus
 	Confirmations         int
 	RequiredConfirmations int
 	TransactionMetadata   map[string]any
+	LockedBy              *string    // Worker holding the processing lease (ADR-0002)
+	LockedUntil           *time.Time // Lease expiry; expired leases are reclaimable
 	Version               int32
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
@@ -30,9 +32,9 @@ type Withdrawal struct {
 	IdempotencyKey        string
 	DestinationAddress    string
 	TxHash                *string
-	Currency              Currency // New: chain-independent currency
-	Network               Network  // New: blockchain/rail
-	Asset                 Asset    // Deprecated: use Currency + Network
+	Currency              Currency
+	Network               Network
+	Asset                 Asset // Deprecated: use Currency + Network
 	AmountAtomic          *big.Int
 	Status                WithdrawalStatus
 	Confirmations         int
@@ -41,6 +43,8 @@ type Withdrawal struct {
 	NextRetryAt           *time.Time
 	FailureReason         *string
 	TransactionMetadata   map[string]any
+	LockedBy              *string    // Worker holding the processing lease (ADR-0002)
+	LockedUntil           *time.Time // Lease expiry; expired leases are reclaimable
 	Version               int32
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
@@ -83,9 +87,9 @@ type IncomingDeposit struct {
 type Address struct {
 	ID         string
 	CustomerID string
-	Currency   Currency // New: chain-independent currency
-	Network    Network  // New: blockchain/rail
-	Asset      Asset    // Deprecated: use Currency + Network
+	Currency   Currency
+	Network    Network
+	Asset      Asset // Deprecated: use Currency + Network
 	Address    string
 	CreatedAt  time.Time
 }
@@ -100,12 +104,11 @@ type Customer struct {
 
 type HotWallet struct {
 	ID        string
-	Currency  Currency // New: chain-independent currency
-	Network   Network  // New: blockchain/rail
-	Asset     Asset    // Deprecated: use Currency + Network
+	Currency  Currency
+	Network   Network
+	Asset     Asset // Deprecated: use Currency + Network
 	NextNonce int64
 	Version   int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
-

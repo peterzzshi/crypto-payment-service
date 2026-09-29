@@ -87,7 +87,7 @@ func TestClaimByStatus_ConcurrentRace(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			claimed, err := repo.ClaimByStatus(ctx, domain.WithdrawalStatusApproved, batchSize)
+			claimed, err := repo.ClaimForBroadcast(ctx, batchSize)
 			results <- claimResult{goroutineID: id, claimed: claimed, err: err}
 		}(i)
 	}

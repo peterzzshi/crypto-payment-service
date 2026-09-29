@@ -96,6 +96,20 @@ func (e InsufficientFundsError) Error() string {
 	return "insufficient funds"
 }
 
+// AuthorizationError indicates the authenticated actor is not allowed to
+// perform the action on this resource (e.g. a Customer attempting to approve
+// their own Withdrawal, violating separation of duties). Maps to HTTP 403.
+type AuthorizationError struct {
+	Reason string
+}
+
+func (e AuthorizationError) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("forbidden: %s", e.Reason)
+	}
+	return "forbidden"
+}
+
 type ValidationError struct {
 	Field   string
 	Message string

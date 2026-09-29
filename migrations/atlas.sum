@@ -1,3 +1,4 @@
-h1:rP8K6VEsBwQQlCBn6w59rU577QxET079yUpjyiu7cUQ=
+h1:lBbb8Ir4oxXZvxStaLfywmdKfESeW3bXGx96iwFgsLc=
 0001_init.sql h1:NRbxh4J8dhOY8B5SXgeNAzsbmuxddo2wj8ChmLYya5A=
 0002_add_currency_network.sql h1:sxBz+3LXuTAANZcj8jhoDCRvh8LBzVLStrvsLpj/QJc=
+0003_add_processing_leases.sql h1:EROLqVryHKJULq3e3G2oPQjLNMg/+vjSh0KTl/lQAr0=

@@ -38,6 +38,10 @@ const (
 	FieldRequiredConfirmations = "required_confirmations"
 	// FieldTransactionMetadata holds the string denoting the transaction_metadata field in the database.
 	FieldTransactionMetadata = "transaction_metadata"
+	// FieldLockedBy holds the string denoting the locked_by field in the database.
+	FieldLockedBy = "locked_by"
+	// FieldLockedUntil holds the string denoting the locked_until field in the database.
+	FieldLockedUntil = "locked_until"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -90,6 +94,8 @@ var Columns = []string{
 	FieldConfirmations,
 	FieldRequiredConfirmations,
 	FieldTransactionMetadata,
+	FieldLockedBy,
+	FieldLockedUntil,
 	FieldVersion,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -189,6 +195,16 @@ func ByConfirmations(opts ...sql.OrderTermOption) OrderOption {
 // ByRequiredConfirmations orders the results by the required_confirmations field.
 func ByRequiredConfirmations(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRequiredConfirmations, opts...).ToFunc()
+}
+
+// ByLockedBy orders the results by the locked_by field.
+func ByLockedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLockedBy, opts...).ToFunc()
+}
+
+// ByLockedUntil orders the results by the locked_until field.
+func ByLockedUntil(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLockedUntil, opts...).ToFunc()
 }
 
 // ByVersion orders the results by the version field.

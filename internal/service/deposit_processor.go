@@ -7,6 +7,7 @@ import (
 	"crypto-payment-service/internal/domain"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 type DepositProcessor struct {
@@ -21,31 +22,32 @@ func NewDepositProcessor(depositService *DepositService, broadcaster broadcast.B
 	}
 }
 
-func (processor *DepositProcessor) ProcessConfirming(ctx context.Context, confirming []*domain.Deposit) {
+func (p *DepositProcessor) ProcessConfirming(ctx context.Context, confirming []*domain.Deposit) {
+	group, ctx := errgroup.WithContext(ctx)
+	group.SetLimit(maxConcurrentRowProcesses)
 	for _, deposit := range confirming {
 		if deposit.TxHash == nil {
 			continue
 		}
-
-		processor.checkConfirmations(ctx, deposit)
+		group.Go(func() error {
+			p.checkConfirmations(ctx, deposit)
+			return nil
+		})
 	}
+	_ = group.Wait()
 }
 
-func (processor *DepositProcessor) checkConfirmations(ctx context.Context, deposit *domain.Deposit) {
+func (p *DepositProcessor) checkConfirmations(ctx context.Context, deposit *domain.Deposit) {
 	log := zap.L().With(
 		zap.String("deposit_id", deposit.ID),
 		zap.String("customer_id", deposit.CustomerID),
-		zap.String("asset", string(deposit.Asset)),
+		zap.String("currency", string(deposit.Currency)),
+		zap.String("network", string(deposit.Network)),
+		zap.String("tx_hash", *deposit.TxHash),
 		zap.String("status", string(deposit.Status)),
 	)
 
-	if deposit.TxHash == nil {
-		log.Warn("deposit missing tx_hash, skipping confirmation check")
-		return
-	}
-	log = log.With(zap.String("tx_hash", *deposit.TxHash))
-
-	confirmations, err := processor.broadcaster.Confirmations(ctx, *deposit.TxHash)
+	confirmations, err := p.broadcaster.Confirmations(ctx, *deposit.TxHash)
 	if err != nil {
 		log.Warn("failed to get confirmations", zap.Error(err))
 		return
@@ -59,14 +61,15 @@ func (processor *DepositProcessor) checkConfirmations(ctx context.Context, depos
 		AddressID:             deposit.AddressID,
 		ExternalTxID:          deposit.ExternalTxID,
 		TxHash:                deposit.TxHash,
-		Asset:                 deposit.Asset,
+		Currency:              deposit.Currency,
+		Network:               deposit.Network,
 		AmountAtomic:          deposit.AmountAtomic,
 		Confirmations:         confirmations,
 		RequiredConfirmations: deposit.RequiredConfirmations,
 		TransactionMetadata:   deposit.TransactionMetadata,
 	}
 
-	if _, err := processor.depositService.UpsertIncoming(ctx, incoming); err != nil {
+	if _, err := p.depositService.UpsertIncoming(ctx, incoming); err != nil {
 		log.Error("failed to update deposit confirmations", zap.Error(err))
 	}
 }

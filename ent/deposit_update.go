@@ -208,6 +208,46 @@ func (_u *DepositUpdate) ClearTransactionMetadata() *DepositUpdate {
 	return _u
 }
 
+// SetLockedBy sets the "locked_by" field.
+func (_u *DepositUpdate) SetLockedBy(v string) *DepositUpdate {
+	_u.mutation.SetLockedBy(v)
+	return _u
+}
+
+// SetNillableLockedBy sets the "locked_by" field if the given value is not nil.
+func (_u *DepositUpdate) SetNillableLockedBy(v *string) *DepositUpdate {
+	if v != nil {
+		_u.SetLockedBy(*v)
+	}
+	return _u
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (_u *DepositUpdate) ClearLockedBy() *DepositUpdate {
+	_u.mutation.ClearLockedBy()
+	return _u
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (_u *DepositUpdate) SetLockedUntil(v time.Time) *DepositUpdate {
+	_u.mutation.SetLockedUntil(v)
+	return _u
+}
+
+// SetNillableLockedUntil sets the "locked_until" field if the given value is not nil.
+func (_u *DepositUpdate) SetNillableLockedUntil(v *time.Time) *DepositUpdate {
+	if v != nil {
+		_u.SetLockedUntil(*v)
+	}
+	return _u
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (_u *DepositUpdate) ClearLockedUntil() *DepositUpdate {
+	_u.mutation.ClearLockedUntil()
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *DepositUpdate) SetVersion(v int32) *DepositUpdate {
 	_u.mutation.ResetVersion()
@@ -410,6 +450,18 @@ func (_u *DepositUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.TransactionMetadataCleared() {
 		_spec.ClearField(deposit.FieldTransactionMetadata, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.LockedBy(); ok {
+		_spec.SetField(deposit.FieldLockedBy, field.TypeString, value)
+	}
+	if _u.mutation.LockedByCleared() {
+		_spec.ClearField(deposit.FieldLockedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.LockedUntil(); ok {
+		_spec.SetField(deposit.FieldLockedUntil, field.TypeTime, value)
+	}
+	if _u.mutation.LockedUntilCleared() {
+		_spec.ClearField(deposit.FieldLockedUntil, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(deposit.FieldVersion, field.TypeInt32, value)
@@ -692,6 +744,46 @@ func (_u *DepositUpdateOne) ClearTransactionMetadata() *DepositUpdateOne {
 	return _u
 }
 
+// SetLockedBy sets the "locked_by" field.
+func (_u *DepositUpdateOne) SetLockedBy(v string) *DepositUpdateOne {
+	_u.mutation.SetLockedBy(v)
+	return _u
+}
+
+// SetNillableLockedBy sets the "locked_by" field if the given value is not nil.
+func (_u *DepositUpdateOne) SetNillableLockedBy(v *string) *DepositUpdateOne {
+	if v != nil {
+		_u.SetLockedBy(*v)
+	}
+	return _u
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (_u *DepositUpdateOne) ClearLockedBy() *DepositUpdateOne {
+	_u.mutation.ClearLockedBy()
+	return _u
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (_u *DepositUpdateOne) SetLockedUntil(v time.Time) *DepositUpdateOne {
+	_u.mutation.SetLockedUntil(v)
+	return _u
+}
+
+// SetNillableLockedUntil sets the "locked_until" field if the given value is not nil.
+func (_u *DepositUpdateOne) SetNillableLockedUntil(v *time.Time) *DepositUpdateOne {
+	if v != nil {
+		_u.SetLockedUntil(*v)
+	}
+	return _u
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (_u *DepositUpdateOne) ClearLockedUntil() *DepositUpdateOne {
+	_u.mutation.ClearLockedUntil()
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *DepositUpdateOne) SetVersion(v int32) *DepositUpdateOne {
 	_u.mutation.ResetVersion()
@@ -924,6 +1016,18 @@ func (_u *DepositUpdateOne) sqlSave(ctx context.Context) (_node *Deposit, err er
 	}
 	if _u.mutation.TransactionMetadataCleared() {
 		_spec.ClearField(deposit.FieldTransactionMetadata, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.LockedBy(); ok {
+		_spec.SetField(deposit.FieldLockedBy, field.TypeString, value)
+	}
+	if _u.mutation.LockedByCleared() {
+		_spec.ClearField(deposit.FieldLockedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.LockedUntil(); ok {
+		_spec.SetField(deposit.FieldLockedUntil, field.TypeTime, value)
+	}
+	if _u.mutation.LockedUntilCleared() {
+		_spec.ClearField(deposit.FieldLockedUntil, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(deposit.FieldVersion, field.TypeInt32, value)
