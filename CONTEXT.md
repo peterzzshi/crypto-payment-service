@@ -1,0 +1,75 @@
+# Crypto Payment Service
+
+A payment service that ingests and settles crypto deposits and withdrawals on behalf of customers, mirroring a
+production custody-integrated payments system (Fireblocks/BitGo-style).
+
+## Language
+
+**Currency**:
+The crypto asset being transferred, independent of which chain it moves on (e.g. BTC, ETH, USDT, BNB). This system is
+crypto-only — fiat currencies (USD, EUR) are explicitly out of scope, not merely undeprioritized. _Avoid_: Asset (the
+historical term conflated currency and network; split into Currency and Network in Phase 3)
+
+**Network**:
+The blockchain a Currency actually moves on (e.g. Ethereum, Tron, BSC, Bitcoin). Technically, any smart-contract-capable
+Network can host any token Currency — the constraint is never technical. Every crypto Currency has a Network. _Avoid_:
+Chain
+
+**Supported Pair**:
+A (Currency, Network) combination this system is configured to accept, defined in `AssetRegistry` config rather than
+hardcoded or technically derived. Since any token can technically exist on any smart-contract chain, "supported" is a
+pure business/ops decision (which pairs this deployment chooses to handle), not a reflection of blockchain capability. A
+request outside the configured set is rejected as unsupported. The frontend is expected to only offer configured pairs
+to customers, so this is a rare-path guard rather than a primary UX concern. _Avoid_: Asset combination
+
+**Network Mismatch**:
+A deposit whose actual origin network doesn't match the Network the receiving address was provisioned for (e.g. a
+Tron-native transfer landing against an Ethereum-provisioned address). Treated as a terminal, unrecoverable failure —
+blockchain transfers can't be reversed — so the system records and surfaces it rather than attempting automated
+recovery. Out of this system's scope: routing it to a support/finance workflow, since this demo has no downstream team
+to hand off to. _Avoid_: Wrong network deposit
+
+**Caller**:
+Whoever or whatever initiated a transaction request against this service — a player, an affiliate, or an AI agent acting
+on a principal's behalf. This service processes any authenticated caller's request identically; authentication,
+authorization, and identity verification (KYC) are owned entirely by a separate IAM service, out of this system's scope.
+_Avoid_: User (conflates "caller of this API" with "customer/player" — not every caller is a retail customer)
+
+**Approver**:
+An authenticated internal operator or risk service authorized to approve or reject a pending Withdrawal. The Approver is
+distinct from the Customer who owns the Withdrawal — separation of duties means an Approver can never approve or reject
+their own Withdrawal — and both identities belong in its audit history. _Avoid_: Customer approver, reviewer
+
+**Audit Event**:
+The durable record of a state transition on a Deposit or Withdrawal, written atomically with the transition it
+describes — a transition without its Audit Event is a bug, not a tolerated loss. Event types follow the canonical
+`<aggregate>.<verb>` form (e.g. `withdrawal.approved`, `deposit.confirmation_updated`), and the acting identity rides in
+metadata as `actor_id`. _Avoid_: Log entry, history row
+
+**Lease**:
+A short-lived, self-expiring claim (`locked_by`, `locked_until`) a worker takes on a row before doing idempotent work
+such as confirmation polling. Expiry, not explicit release, is the recovery mechanism: a crashed worker's rows become
+claimable again on their own. Irreversible work (broadcast) never uses a Lease — it uses a state-machine claim instead.
+_Avoid_: Lock (overloaded with database row locks and in-process mutexes)
+
+### Reorg vocabulary
+
+These three are needed once Reconciliation lands. They are defined identically to the sibling repo
+`chain-reorg-detection-engine`'s `CONTEXT.md` — copy, do not reinterpret, because the two services
+share the concept across a boundary. Scanner-internal vocabulary (chain cursor, logical transfer
+ID) is deliberately **not** repeated here: this service consumes the resulting signal, it does not
+own the scanner.
+
+**Reorg**:
+A replacement of previously canonical blocks by a competing branch. Can invalidate already-observed
+transfers, including after credit. _Avoid_: rollback, fork
+
+**Confirmation depth**:
+The number of canonical blocks on top of a transfer's block required before crediting. A risk
+policy, not a proof of finality. _Avoid_: finality, confirmations (as a count alone)
+
+**Finality horizon**:
+A second, much deeper threshold after confirmation depth. Until it passes, a credited deposit can
+still be reversed by a deep reorg; once it passes, the deposit is treated as irreversible and the
+system stops watching it. Encodes the explicit assumption that reorg protection is best-effort,
+never a guarantee. _Avoid_: finality (no deterministic finality is assumed)
